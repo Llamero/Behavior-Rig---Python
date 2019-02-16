@@ -1,0 +1,7 @@
+image: [1.png,2.png,3.png,4.png]
+time: [3, 3, 3, 3]
+reward: [1.png]
+wheel trigger: True
+reward duration: 2
+wheel interval: 2
+This is metadata.........................
