@@ -853,15 +853,21 @@ def runExperiment():
 
 #---------------------------------Initialize-----------------------------------------------------------------------------------------------------------------------------------------------
 
-def main():
-    #e specifies commands to be run in terminal, tail --follow is a program that outputs text as a file grows and follow means show new lines every 1 second (default rate)
-    #Clear the log file
-    with open(PIPE_PATH, "w+") as p:
-        p.write("")
-    terminal = subprocess.Popen(["lxterminal -e tail --follow " + PIPE_PATH], shell=True, stdout=devnull, stderr=devnull)
-    while(True):
+def main():    
+    #If logged in as Pi, then run the code in a loop
+    if os.geteuid() != 0:
+        #Open lxterminal running tail to show status of program
+        #e specifies commands to be run in terminal, tail --follow is a program that outputs text as a file grows and follow means show new lines every 1 second (default rate)
+        #Clear the log file
+        with open(PIPE_PATH, "w+") as p:
+            p.write("")
+        terminal = subprocess.Popen(["lxterminal -e tail --follow " + PIPE_PATH], shell=True, stdout=devnull, stderr=devnull)
+        
+        while(True):
+            checkPiConfig()
+            checkForUSB()
+    else: #If su, then only check the configuration, and then exit the program
         checkPiConfig()
-        checkForUSB()
 
 if __name__ == '__main__':
     main()
