@@ -394,7 +394,7 @@ def checkForUSB():
                 #Retrieve the drive location
                 dirSearch = re.search("sd[a-z]", outString)
                 if dirSearch:
-                    USBdir = "/dev/" + dirSearch.group(0)
+                    USBdir = "/dev/" + dirSearch.group(0) + "1"
                     
                     #Mount the USB drive
                     subprocess.call("sudo mkdir -p " + mountDir, shell=True) #Create directory to which to mount the USB drive if it doesn't exist
