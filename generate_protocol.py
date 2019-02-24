@@ -3,17 +3,10 @@
 import os
 from random import randint
 from shutil import copyfile
+import psutil
 
-
-mountDir = '/mnt/usb/' #where the usb is mounted
-mounted = None
-try: 
-    os.listdir(mountDir) #check if usb is mounted
-except FileNotFoundError:
-    mountDir = False 
-else:
-    mountDir = True
-
+global imageDir
+imageDir = None
 #condition that number is positive
 positive_condition = lambda x: int(x) > 0
 
@@ -36,6 +29,7 @@ def usePresets():
     global reward_set       #images that are rewards
     global off_interperse   #use with fixed order. Is Off image interspersed or at the end of the cycle
     global off_spacing      #use without fixed order. After how many images should off image be shown
+    global imageDir         #where images are located
 
     preset = 0
     #get which preset use wants or exit upon request
@@ -48,6 +42,8 @@ def usePresets():
         else:
             print('Integers or "exit" only!')
             preset = 0
+
+    imageDir = ''
 
     if preset == 1:
         images_and_times = {'gray.png': experiment_length}
@@ -96,10 +92,13 @@ def getNewProtocol():
     global reward_set       #images that are rewards
     global off_interperse   #use with fixed order. Is Off image interspersed or at the end of the cycle
     global off_spacing      #use without fixed order. After how many images should off image be shown
+    global imageDir         #where images are located
 
     directory = input('Enter directory where images are stored: ')
     if not directory.endswith('/'):
         directory += '/'
+
+    imageDir = directory
 
     fixed_times = input('Fixed times for images? (yes/no): ').lower().startswith('y')
 
@@ -173,17 +172,6 @@ def getNewProtocol():
                     images_and_times[f] = duration
                 else:
                     pass
-
-    images = list(images_and_times.keys())
-    if mounted:
-        if 'images' not in os.listdir(mountDir):
-            os.mkdir(mountDir + 'images/')
-        for img in images:
-            try:
-                copyfile(directory + img, mountDir + 'images/' + img)
-            except:
-                print('could not copy '+ img+ ' to usb')
-
 
     if off_img:
         if fixed_order:
@@ -276,8 +264,31 @@ def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
     else:
         sequence_imgs, sequence_times = generateSequence_noOrder()
 
-    if mounted:
+    mountDir = None
+
+    def saveToMounted():
+        nonlocal mountDir
+        pre_mount_locations = post_mount_locations #partition list prior to mounting drive
+        post_mount_locations = psutil.disk_partitions()
+        save_to_usb = True
+        while save_to_usb and len(post_mount_locations) - len(pre_mount_locations) != 1:
+            pre_mount_locations = post_mount_locations #partition list prior to mounting drive
+            save_to_usb = input('Please mount a usb drive and press any key (exit) to NOT save to usb: ') != 'exit'
+            post_mount_locations = psutil.disk_partitions()
+        if save_to_usb:
+            mountDir = list(set(post_mount_locations) - set(pre_mount_locations))[0].mountpoint + '/' #new disk partition is where usb is mounted
+
+    images = list(images_and_times.keys())
+
+    if mountDir is not None:
         pfileName = mountDir + 'Protocol.txt'
+        if 'images' not in os.listdir(mountDir):
+            os.mkdir(mountDir + 'images/')
+        for img in images:
+            try:
+                copyfile(imageDir + img, mountDir + 'images/' + img)
+            except:
+                print('could not copy '+ img+ ' to usb')
     else:
         pfileName = 'Protocol.txt'
 
@@ -297,7 +308,7 @@ def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
         pfile.write('This is metadata............')
         pfile.write('\n')
         pfile.write(metadata)
-    
+
 
 
 def main():
