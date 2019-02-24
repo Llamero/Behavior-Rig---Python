@@ -3,9 +3,9 @@
 import os
 from randome import randint
 
-def inputDigit(message):
+def inputDigit(message, condition=lambda x: True):
     d = None
-    while not d.isdigit():
+    while not d.isdigit() and not condition(d):
         d = input(message)
     d = int(d)
     return d
@@ -125,84 +125,102 @@ def getNewProtocol():
         if fixed_order:
             off_interperse = input('Should off image be at the end of cycle (e) or after each image (a)?: ').lower().startswith(a)
         else:
-            off_spacing = inputDigit('Off image will be shown after every n (integer) images: ')
+            off_spacing = inputDigit('Off image will be shown after every n (integer) images: ', lambda x: x > 0)
 
 
-def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
+def generateSequence_fixedOrder():
+
     sequence_imgs = []
     sequence_times = []
     total_time = 0
     images = list(images_and_times.keys())
 
-    if fixed_order:
+    k = 0
+    while total_time < experiment_length:
 
-        k = 0
+        img = images[k % len(images)] # % allows for wrapping around the array
+        k += 1
+        duration = images_and_times[img]
+        if type(duration) == tuple:
+            duration = randint(duration[0], duration[1])
 
-        while total_time < experiment_length:
+        sequence_imgs.append(img)
+        sequence_times.append(duration)
+        total_time += duration
 
-            img = images[k % len(images)] # % allows for wrapping around the array
-            k += 1
-            duration = images_and_times[img]
-            if type(duration) == tuple:
+        if total_time > experiment_length:
+            break
+
+        if off_img and (off_interperse or k % len(images) == 0):
+            sequence_imgs.append(off_img)
+            duration = off_time
+            if type(duration) == tuple: #if time is variable, get random value within range
                 duration = randint(duration[0], duration[1])
-
-            sequence_imgs.append(img)
             sequence_times.append(duration)
             total_time += duration
 
-            if total_time > experiment_length:
-                break
-
-            if off_img and (off_interperse or k % len(images) == 0):
-                sequence_imgs.append(off_img)
-                duration = off_time
-                if type(duration) == tuple: #if time is variable, get random value within range
-                    duration = randint(duration[0], duration[1])
-                sequence_times.append(duration)
-                total_time += duration
+    return sequence_imgs, sequence_times
 
 
+def generateSequence_noOrder():
+
+    sequence_imgs = []
+    sequence_times = []
+    total_time = 0
+    images = list(images_and_times.keys())
+
+    k, previous = -1, -1
+    count = 0
+    while total_time < experiment_length:
+        if off_img:
+            k = randint(0, len(images) - 1)
+            count += 1
+        else: 
+            while k != previous:
+                k = randint(0, len(images) - 1)
+            previous = k
+
+        img = images(k)
+        duration = images_and_times[img]
+        if type(duration) == tuple:
+            duration = randint(duration[0], duration[1])
+
+        sequence_imgs.append(img)
+        sequence_times.append(duration)
+        total_time += duration
+
+        if total_time > experiment_length:
+            break
+
+        if off_img and count == off_spacing:
+            count = 0
+            sequence_imgs.append(off_img)
+            duration = off_time
+            if type(duration) == tuple: #if time is variable, get random value within range
+                duration = randint(duration[0], duration[1])
+            sequence_times.append(duration)
+            total_time += duration
+
+    return sequence_imgs, sequence_times
+
+
+def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
+
+    if fixed_order:
+        sequence_imgs, sequence_times = generateSequence_fixedOrder()
 
     else:
+        sequence_imgs, sequence_times = generateSequence_noOrder()
 
-        k, previous = -1, -1
-        count = 0
-
-        while total_time < experiment_length:
-            if off_img:
-                k = randint(0, len(images) - 1)
-                count += 1
-            else: 
-                while k != previous:
-                    k = randint(0, len(images) - 1)
-                previous = k
-
-            img = images(k)
-            time = images_and_times[img]
-            if type(time) == tuple:
-                time = randint(time[0], time[1])
-
-
-
-        sequence.append(img)
-        t = images_and_times[img]
-        times.append(t)
-        total_time += t
-        if total_time < experiment_length:
-            sequence.append(off_img)
-            times.append(off_time)
-            total_time += off_time
-
-
-        with open('Protocol.txt', 'w') as pfile:
-            pfile.write('image: [%s]' % ', '.join(map(str, cycle_imgs)))
-            pfile.write('time: [%s]' % ', '.join(map(str, cycle_times)))
-            pfile.write('reward: [%s]' % ', '.join(map(str, reward_set)))
-            pfile.write('wheel trigger: {0}'.format(wheel_trigger))
-            pfile.write('reward duration: {0}'.format(reward_duration))
-            pfile.write('wheel interval: {0}'.format(wheel_interval))
-            pfile.write('This is metadata............')
-            pfile.write(metadata)
+    with open('Protocol.txt', 'w') as pfile:
+        pfile.write('image: [%s]' % ', '.join(map(str, cycle_imgs)))
+        pfile.write('time: [%s]' % ', '.join(map(str, cycle_times)))
+        pfile.write('reward: [%s]' % ', '.join(map(str, reward_set)))
+        pfile.write('wheel trigger: {0}'.format(wheel_trigger))
+        pfile.write('reward duration: {0}'.format(reward_duration))
+        pfile.write('wheel interval: {0}'.format(wheel_interval))
+        pfile.write('This is metadata............')
+        pfile.write(metadata)
     
 
 
