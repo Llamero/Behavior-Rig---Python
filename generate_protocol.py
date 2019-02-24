@@ -2,6 +2,17 @@
 
 import os
 from random import randint
+from shutil import copyfile
+
+
+mountDir = '/mnt/usb/' #where the usb is mounted
+mounted = None
+try: 
+    os.listdir(mountDir) #check if usb is mounted
+except FileNotFoundError:
+    mountDir = False 
+else:
+    mountDir = True
 
 #condition that number is positive
 positive_condition = lambda x: int(x) > 0
@@ -162,6 +173,18 @@ def getNewProtocol():
                     images_and_times[f] = duration
                 else:
                     pass
+
+    images = list(images_and_times.keys())
+    if mounted:
+        if 'images' not in os.listdir(mountDir):
+            os.mkdir(mountDir + 'images/')
+        for img in images:
+            try:
+                copyfile(directory + img, mountDir + 'images/' + img)
+            except:
+                print('could not copy '+ img+ ' to usb')
+
+
     if off_img:
         if fixed_order:
             off_interperse = input('Should off image be at the end of cycle (e) or after each image (a)?: ').lower().startswith(a)
@@ -253,7 +276,12 @@ def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
     else:
         sequence_imgs, sequence_times = generateSequence_noOrder()
 
-    with open('Protocol.txt', 'w') as pfile: #write protocol specs to protocol file
+    if mounted:
+        pfileName = mountDir + 'Protocol.txt'
+    else:
+        pfileName = 'Protocol.txt'
+
+    with open(pfileName, 'w') as pfile: #write protocol specs to protocol file
         pfile.write('image: [%s]' % ', '.join(map(str, sequence_imgs)))
         pfile.write('\n')
         pfile.write('time: [%s]' % ', '.join(map(str, sequence_times)))
