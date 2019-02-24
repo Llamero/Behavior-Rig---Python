@@ -17,22 +17,21 @@ def inputDigit(message, condition=lambda x: True):
 #ask user if would like to use presets
 ##presets implemented for 4 nights as per email
 def usePresets():
-    global images_and_times
-    global fixed_times
-    global fixed_order
-    global off_img
-    global off_time
-    global reward_set
-    global off_interperse
-    global off_spacing
+    global images_and_times #list of images and duration of exposure
+    global fixed_times      #are times fixed or within a range
+    global fixed_order      #order fixed or random
+    global off_img          #(optional) image to be shown when screen is 'off', i.e. black image
+    global off_time         #duration of off image
+    global reward_set       #images that are rewards
+    global off_interperse   #use with fixed order. Is Off image interspersed or at the end of the cycle
+    global off_spacing      #use without fixed order. After how many images should off image be shown
 
     preset = 0
+    #get which preset use wants or exit upon request
     while preset not in range(1, 5):
         preset = input('Enter preset from nights 1-4 (exit to leave preset menu): ')
-
         if preset == 'exit':
             return False
-
         if preset.isdigit():
             preset = int(preset)
         else:
@@ -78,14 +77,14 @@ def usePresets():
 
 
 def getNewProtocol():
-    global images_and_times
-    global fixed_times
-    global fixed_order
-    global off_img
-    global off_time
-    global reward_set
-    global off_interperse
-    global off_spacing
+    global images_and_times #list of images and duration of exposure
+    global fixed_times      #are times fixed or within a range
+    global fixed_order      #order fixed or random
+    global off_img          #(optional) image to be shown when screen is 'off', i.e. black image
+    global off_time         #duration of off image
+    global reward_set       #images that are rewards
+    global off_interperse   #use with fixed order. Is Off image interspersed or at the end of the cycle
+    global off_spacing      #use without fixed order. After how many images should off image be shown
 
     directory = input('Enter directory where images are stored: ')
     if not directory.endswith('/'):
@@ -99,31 +98,31 @@ def getNewProtocol():
 
     if fixed_times:
 
-        for f in next(os.walk(directory))[2]:
+        for f in next(os.walk(directory))[2]: #iterate through directory images, get info for display
 
             if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
                 
                 img_type = input('What is image {0}? Control (c), Reward (r), Off (o), Remove from list (x), Finish list (f): '.format(f)).lower()
-                if img_type.startswith('x'):
+                if img_type.startswith('x'): #removes image from list
                     continue
-                if img_type.startswith('f'):
+                if img_type.startswith('f'): #stops iterating through directory
                     break
 
                 duration = inputDigit('Length of display for image {0}: '.format(f), positive_condition)
 
-                if img_type.startswith('o'):
+                if img_type.startswith('o'): #off image
                     off_img = (f, duration) 
-                elif img_type.startswith('r'):
-                    images_and_times[f] = duration
+                elif img_type.startswith('r'): #reward image
+                    images_and_times[f] = duration 
                     reward_set.append(f)
-                elif img_type.startswith('c'):
+                elif img_type.startswith('c'): #control image
                     images_and_times[f] = duration
                 else:
                     pass
 
     else:
 
-        for f in next(os.walk(directory))[2]:
+        for f in next(os.walk(directory))[2]: #iterate through directory images, get info for display
             if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
 
                 def valid(duration):
@@ -140,9 +139,9 @@ def getNewProtocol():
                 duration = None
 
                 img_type = input('What is image {0}? Control (c), Reward (r), Off (o), Remove from list (x), Finish list (f): '.format(f)).lower()
-                if img_type.startswith('x'):
+                if img_type.startswith('x'): #removes image from list
                     continue
-                if img_type.startswith('f'):
+                if img_type.startswith('f'): #stops iterating through directory
                     break
 
                 while not valid(duration):
@@ -167,19 +166,19 @@ def getNewProtocol():
 
 def generateSequence_fixedOrder():
 
-    sequence_imgs = []
-    sequence_times = []
+    sequence_imgs = [] #final sequence of images through entirety of experiment
+    sequence_times = [] #final sequence of duration of image displays through entirety of experiment
     total_time = 0
     images = list(images_and_times.keys())
-
     k = 0
+
     while total_time < experiment_length:
 
         img = images[k % len(images)] # % allows for wrapping around the array
         k += 1
         duration = images_and_times[img]
         if type(duration) == tuple:
-            duration = randint(duration[0], duration[1])
+            duration = randint(duration[0], duration[1]) #duration within specified range if time is not fixed
 
         sequence_imgs.append(img)
         sequence_times.append(duration)
@@ -192,7 +191,7 @@ def generateSequence_fixedOrder():
             sequence_imgs.append(off_img)
             duration = off_time
             if type(duration) == tuple: #if time is variable, get random value within range
-                duration = randint(duration[0], duration[1])
+                duration = randint(duration[0], duration[1]) #duration within specified range if time not fixed
             sequence_times.append(duration)
             total_time += duration
 
@@ -201,8 +200,8 @@ def generateSequence_fixedOrder():
 
 def generateSequence_noOrder():
 
-    sequence_imgs = []
-    sequence_times = []
+    sequence_imgs = [] #final sequence of images through entirety of experiment
+    sequence_times = [] #final sequence of duration of image displays through entirety of experiment
     total_time = 0
     images = list(images_and_times.keys())
 
@@ -220,7 +219,7 @@ def generateSequence_noOrder():
         img = images[k]
         duration = images_and_times[img]
         if type(duration) == tuple:
-            duration = randint(duration[0], duration[1])
+            duration = randint(duration[0], duration[1]) #duration within specified range if time not fixed
 
         sequence_imgs.append(img)
         sequence_times.append(duration)
@@ -233,8 +232,8 @@ def generateSequence_noOrder():
             count = 0
             sequence_imgs.append(off_img)
             duration = off_time
-            if type(duration) == tuple: #if time is variable, get random value within range
-                duration = randint(duration[0], duration[1])
+            if type(duration) == tuple: 
+                duration = randint(duration[0], duration[1]) #duration within specified range if time not fixed
             sequence_times.append(duration)
             total_time += duration
 
@@ -249,7 +248,7 @@ def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
     else:
         sequence_imgs, sequence_times = generateSequence_noOrder()
 
-    with open('Protocol.txt', 'w') as pfile:
+    with open('Protocol.txt', 'w') as pfile: #write protocol specs to protocol file
         pfile.write('image: [%s]' % ', '.join(map(str, sequence_imgs)))
         pfile.write('\n')
         pfile.write('time: [%s]' % ', '.join(map(str, sequence_times)))
