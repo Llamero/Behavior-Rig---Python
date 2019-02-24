@@ -1,16 +1,31 @@
 # !/usr/bin/env/python3.6
 
 import os
-from randome import randint
+from random import randint
 
+#condition that number is positive
+positive_condition = lambda x: int(x) > 0
+
+#get an input number subject to a condition
 def inputDigit(message, condition=lambda x: True):
     d = None
-    while not d.isdigit() and not condition(d):
+    while not d or not d.isdigit() or not condition(d):
         d = input(message)
     d = int(d)
     return d
 
+#ask user if would like to use presets
+##presets implemented for 4 nights as per email
 def usePresets():
+    global images_and_times
+    global fixed_times
+    global fixed_order
+    global off_img
+    global off_time
+    global reward_set
+    global off_interperse
+    global off_spacing
+
     preset = 0
     while preset not in range(1, 5):
         preset = input('Enter preset from nights 1-4 (exit to leave preset menu): ')
@@ -25,8 +40,7 @@ def usePresets():
             preset = 0
 
     if preset == 1:
-        images_and_times = ['gray.png']
-        times = [experiment_length]
+        images_and_times = {'gray.png': experiment_length}
         fixed_order = True
         reward_set = ['gray.png']
         off_img = None
@@ -39,6 +53,7 @@ def usePresets():
         off_img = 'black.png'
         off_time = 420
         fixed_times = True
+        off_interperse = False
 
 
     elif preset == 3:
@@ -48,6 +63,7 @@ def usePresets():
         off_img = 'black.png'
         off_time = 120
         fixed_times = True
+        off_spacing = 1
 
     else:
         min_duration = 12
@@ -62,6 +78,15 @@ def usePresets():
 
 
 def getNewProtocol():
+    global images_and_times
+    global fixed_times
+    global fixed_order
+    global off_img
+    global off_time
+    global reward_set
+    global off_interperse
+    global off_spacing
+
     directory = input('Enter directory where images are stored: ')
     if not directory.endswith('/'):
         directory += '/'
@@ -74,12 +99,18 @@ def getNewProtocol():
 
     if fixed_times:
 
-        for f in next(os.walk(dir))[1]:
+        for f in next(os.walk(directory))[2]:
+
             if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
                 
-                duration = inputDigit('Length of display for image {0}: '.format(f))
+                img_type = input('What is image {0}? Control (c), Reward (r), Off (o), Remove from list (x), Finish list (f): '.format(f)).lower()
+                if img_type.startswith('x'):
+                    continue
+                if img_type.startswith('f'):
+                    break
 
-                img_type = input('What is this image? Control (c), Reward (r), Off (o), or Remove from list (x): ').lower()
+                duration = inputDigit('Length of display for image {0}: '.format(f), positive_condition)
+
                 if img_type.startswith('o'):
                     off_img = (f, duration) 
                 elif img_type.startswith('r'):
@@ -92,7 +123,7 @@ def getNewProtocol():
 
     else:
 
-        for f in next(os.walk(dir))[1]:
+        for f in next(os.walk(directory))[2]:
             if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
 
                 def valid(duration):
@@ -107,17 +138,23 @@ def getNewProtocol():
                         return i <= j
 
                 duration = None
+
+                img_type = input('What is image {0}? Control (c), Reward (r), Off (o), Remove from list (x), Finish list (f): '.format(f)).lower()
+                if img_type.startswith('x'):
+                    continue
+                if img_type.startswith('f'):
+                    break
+
                 while not valid(duration):
                     duration = (inputDigit('Minimum length of display for image {0}: '.format(f)), inputDigit('Maximum length of display for image {0}: '.format(f)))
 
-                img_type = input('What is this image? Control (c), Reward (r), Off (o), or Remove from list (x): ').lower()
                 if img_type.startswith('o'):
                     off_img = f 
                     off_time = duration
                 elif img_type.startswith('r'):
                     images_and_times[f] = duration
                     reward_set.append(f)
-                elif img_type.startswith('c')
+                elif img_type.startswith('c'):
                     images_and_times[f] = duration
                 else:
                     pass
@@ -125,7 +162,7 @@ def getNewProtocol():
         if fixed_order:
             off_interperse = input('Should off image be at the end of cycle (e) or after each image (a)?: ').lower().startswith(a)
         else:
-            off_spacing = inputDigit('Off image will be shown after every n (integer) images: ', lambda x: x > 0)
+            off_spacing = inputDigit('Off image will be shown after every n (integer) images: ', positive_condition)
 
 
 def generateSequence_fixedOrder():
@@ -180,7 +217,7 @@ def generateSequence_noOrder():
                 k = randint(0, len(images) - 1)
             previous = k
 
-        img = images(k)
+        img = images[k]
         duration = images_and_times[img]
         if type(duration) == tuple:
             duration = randint(duration[0], duration[1])
@@ -213,21 +250,27 @@ def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
         sequence_imgs, sequence_times = generateSequence_noOrder()
 
     with open('Protocol.txt', 'w') as pfile:
-        pfile.write('image: [%s]' % ', '.join(map(str, cycle_imgs)))
-        pfile.write('time: [%s]' % ', '.join(map(str, cycle_times)))
+        pfile.write('image: [%s]' % ', '.join(map(str, sequence_imgs)))
+        pfile.write('\n')
+        pfile.write('time: [%s]' % ', '.join(map(str, sequence_times)))
+        pfile.write('\n')
         pfile.write('reward: [%s]' % ', '.join(map(str, reward_set)))
+        pfile.write('\n')
         pfile.write('wheel trigger: {0}'.format(wheel_trigger))
+        pfile.write('\n')
         pfile.write('reward duration: {0}'.format(reward_duration))
+        pfile.write('\n')
         pfile.write('wheel interval: {0}'.format(wheel_interval))
+        pfile.write('\n')
         pfile.write('This is metadata............')
+        pfile.write('\n')
         pfile.write(metadata)
     
 
 
 def main():
     global experiment_length
-    global images
-    global times
+    global images_and_times
     global fixed_times
     global fixed_order
     global off_img
@@ -237,13 +280,13 @@ def main():
     global off_interperse #for use with fixed order
     global off_spacing #for use with no fixed order
     
-    experiment_length = inputDigit("Enter experiment length in HOURS: ")
+    experiment_length = inputDigit("Enter experiment length in HOURS: ", positive_condition)
     experiment_length *= (60**2) #convert hours to seconds
 
     wheel_trigger = input('Wheel trigger (yes/no): ').lower().startswith('y')
-    wheel_interval = inputDigit('Wheel interval (seconds): ')
-    reward_duration = inputDigit('Duration of reward (seconds): ')
-    metadata
+    wheel_interval = inputDigit('Wheel interval (seconds): ', positive_condition)
+    reward_duration = inputDigit('Duration of reward (seconds): ', positive_condition)
+    metadata = input('Enter any metadata: ')
 
     presets = input('Use preset protocol? (yes/no): ').lower().startswith('y') #use pre-defined protocols for nights 1-4
     loadedProtocol = False
