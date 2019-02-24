@@ -98,7 +98,9 @@ def getNewProtocol():
 
     if fixed_times:
 
-        for f in next(os.walk(directory))[2]: #iterate through directory images, get info for display
+        dir_contents = next(os.walk(directory))[2]
+        dir_contents.sort()
+        for f in dir_contents: #iterate through directory images, get info for display
 
             if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
                 
@@ -111,7 +113,8 @@ def getNewProtocol():
                 duration = inputDigit('Length of display for image {0}: '.format(f), positive_condition)
 
                 if img_type.startswith('o'): #off image
-                    off_img = (f, duration) 
+                    off_img = f 
+                    off_time = duration 
                 elif img_type.startswith('r'): #reward image
                     images_and_times[f] = duration 
                     reward_set.append(f)
@@ -122,7 +125,9 @@ def getNewProtocol():
 
     else:
 
-        for f in next(os.walk(directory))[2]: #iterate through directory images, get info for display
+        dir_contents = next(os.walk(directory))[2]
+        dir_contents.sort()
+        for f in dir_contents: #iterate through directory images, get info for display
             if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
 
                 def valid(duration):
