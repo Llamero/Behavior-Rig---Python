@@ -1,9 +1,15 @@
 # !/usr/bin/env/python3.6
 
 import os
+import sys
 from random import randint
 from shutil import copyfile
 import psutil
+import time
+from msvcrt import kbhit #Log keypress events - note: getch() is blocking
+
+#Install instructions for psutil - https://github.com/giampaolo/psutil/blob/master/INSTALL.rst
+#Follow the same instructions for pygame
 
 global imageDir
 imageDir = None
@@ -268,16 +274,27 @@ def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
 
     def saveToMounted():
         nonlocal mountDir
-        pre_mount_locations = post_mount_locations #partition list prior to mounting drive
         post_mount_locations = psutil.disk_partitions()
+        pre_mount_locations = post_mount_locations #partition list prior to mounting drive
         save_to_usb = True
-        while save_to_usb and len(post_mount_locations) - len(pre_mount_locations) != 1:
-            pre_mount_locations = post_mount_locations #partition list prior to mounting drive
-            save_to_usb = input('Please mount a usb drive and press any key (exit) to NOT save to usb: ') != 'exit'
+        print("Please insert USB drive, or press any key to save to default directory")
+        pre_mount_locations = post_mount_locations #partition list prior to mounting drive 
+        while save_to_usb and len(post_mount_locations) - len(pre_mount_locations) != 1:                 
+            if kbhit(): #If keypress event, abort wait for usb insertion - note: getch() is blocking
+                save_to_usb = False
+                print("Keypress detected, files will be saved to: " + str(os.getcwd())) 
+                return
             post_mount_locations = psutil.disk_partitions()
-        if save_to_usb:
-            mountDir = list(set(post_mount_locations) - set(pre_mount_locations))[0].mountpoint + '/' #new disk partition is where usb is mounted
-
+            time.sleep(0.1)
+            if len(post_mount_locations) - len(pre_mount_locations) == 1: #If new partition is found, save file to new partition
+                mountDir = list(set(post_mount_locations) - set(pre_mount_locations))[0].mountpoint + '/' #new disk partition is where usb is mounted
+                print("USB drive found, files will be saved to: " + str(mountDir[:-1]))
+                return
+            elif len(post_mount_locations) - len(pre_mount_locations) == -1: #If partion was removed, thumb drive was removed so reset partition list
+                print("Thumb drive removed...")
+                print("Please insert USB drive, or press any key to save to default directory")
+                pre_mount_locations = post_mount_locations #partition list prior to mounting drive 
+    saveToMounted()
     images = list(images_and_times.keys())
 
     if mountDir is not None:
@@ -344,5 +361,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
