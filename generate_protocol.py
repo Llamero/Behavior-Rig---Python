@@ -2,19 +2,21 @@
 #Install instructions for psutil - https://github.com/giampaolo/psutil/blob/master/INSTALL.rst
 #Follow the same instructions for pygame
 
-from shutil import copyfile
+import os #Create directory
 import sys #Allows program to exit on completion
 import psutil #Gives access to USB drive mount events
 import time #Gives access to delays and timing
-import PIL #Draw images and save as PNG
-from tkinter import * #GUI library
-from tkinter import font
+from PIL import Image, ImageDraw #Draw images and save as PNG
+from tkinter import font, Tk, Label, Entry, Frame, Checkbutton, Text, Scrollbar, Button, DoubleVar, IntVar, Radiobutton #GUI library
+from tkinter.constants import *
 import re #REGEX library
 import threading #Allow running the protocol generator as a separate thread to not lock the GUI
 import queue #Allow kill flag to be sent to threads
 import win32api #Get name of USB drive - windows only
 
 nCages = 4 #Global variable declaring number of cages
+imageWidth = 1024
+imageHeight = 768
 
 #This class allows functions with arguments to be run as threads: http://softwareramblings.com/2008/06/running-functions-as-threads-in-python.html
 class FuncThread(threading.Thread):
@@ -29,7 +31,6 @@ class FuncThread(threading.Thread):
 
 def buildGUI():
     ####See "def loadPreset()" to change default protocol settings###
-    imageDir = None
     entryDict = {} #Values for the entry portion of the GUI - tuple - (label, var, entry)
     imageBarDict = {} #Outputs from image select check boxes
     prevImageBarVars = {} #Last recorded state of check boxes
@@ -117,7 +118,7 @@ def buildGUI():
                     if uploadButton['text'] == "Upload":
                         #Run the protocol generator as a separate thread from the GUI so that the GUI doesn't lock up       
                         killFlag.put(1)
-                        protocolThread = threading.Thread(target=uploadProtocol, args=(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton))
+                        protocolThread = threading.Thread(target=uploadProtocol, args=(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton, presetVar, presetList))
                         toggleGUI('disabled')
                         protocolThread.start()
                         #protocolThread.join()
@@ -309,13 +310,14 @@ def buildGUI():
     
     gui.mainloop() #Blocks rest of code from executing - similar to while True with update loop
 
-def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton):
+def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton, presetVar, presetList):
     global nCages
     
     def parseProtocol():
         nonlocal entryDict
         nonlocal imageBarDict
         nonlocal metadataBox
+        nonlocal imageList
         
         controlList = []
         rewardList = []
@@ -327,8 +329,14 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 controlList.append(key)
             if rVar.get() == 1:
                 rewardList.append(key)
+        imageList = list(set(rewardList + controlList)) #generate a list of all unique images used in the protocol
+        preset = presetVar.get()
+        for k,v in presetList:
+            if v == preset:
+                preset = k
         
-        return ("control image set: " + re.sub("\'", "", str(controlList)) + "\n" +
+        return ("experiment preset: " + preset + "\n" +
+                "control image set: " + re.sub("\'", "", str(controlList)) + "\n" +
                 "reward image set: " + re.sub("\'", "", str(rewardList)) + "\n" +
                 "minimum wheel revolution: " + str(entryDict["minReward"]["var"].get()) + "\n" +
                 "maximum wheel revolution: " + str(entryDict["maxReward"]["var"].get()) + "\n" +
@@ -336,7 +344,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 "wheel duration: " + str(entryDict["wheelDuration"]["var"].get()) + "\n" +
                 "reward frequency: " + str(entryDict["rewardFreq"]["var"].get()) + "\n" +
                 "image frequency: " + str(entryDict["imageFreq"]["var"].get()) + "\n" +
-                "experiment duration: " + str(entryDict["experimentDuration"]["var"].get()) + "\n"
+                "experiment duration: " + str(entryDict["experimentDuration"]["var"].get()) + "\n" +
                 "metadata: " + str(metadataBox.get("1.0", "end"))) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget 
     
     def findUSB():
@@ -344,6 +352,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         nonlocal cageList
         nonlocal cage
         nonlocal driveGroup
+
         mountDir = None
         
         post_mount_locations = psutil.disk_partitions()
@@ -384,22 +393,88 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 error = False
     
     def exportFiles(fileString, mountDir):
+        nonlocal imageList
         if mountDir is None: #If cancel button is pressed, exit thread
             return    
         pfileName = mountDir + 'Protocol.txt'
-        with open(pfileName, 'w') as pfile: #write protocol specs to protocol file
+        with open(pfileName, 'w+') as pfile: #write protocol specs to protocol file
             pfile.write(fileString)
+        
+        imageDir = mountDir + "image/"
+        for image in imageList:
+            imageFile = drawImage(image, entryDict["imageFreq"]["var"].get(), (0,0,0), (0,255,0))      
+            try:
+                imageFile.save(imageDir + image + ".png", format="PNG")
+            except:           
+                os.mkdir(imageDir)
+                imageFile.save(imageDir + image + ".png", format="PNG")
+                
+    def drawImage(mode, freq, foreground, background):
+        global imageWidth
+        global imageHeight
+        
+        if(mode == "Solid"):
+            br, bg, bb = background
+            fr,fg,fb = foreground
+            background = (round((fr+br)/2), round((fg+bg)/2), round((fb+bb)/2))
+            foreground = background
+            
+        image = Image.new("RGB", (imageWidth, imageHeight), color=background) #Create and image filled with background color
+        drawObject = ImageDraw.Draw(image) #Create drawing context
+        
+        #Create checkerboard as default starting pattern
+        squareWidth = imageWidth/(2*freq)
+        squareHeight = squareWidth
+        x0 = 0
+        y0 = 0
+        drawSquare = True
+        row = 0
+        column = 0
+        while y0 < imageHeight:
+            y1 = round(squareHeight*(row+1)) #Calculate new position of bottom of square
+            x0 = 0 #Reset x0 position
+            column = 0
+            drawSquare = not drawSquare #Shift phase of draw square to enable checkerboard pattern
+            while x0 < imageWidth:  
+                x1 = round(squareWidth*(column+1)) #Calculate new position of bottom of square
+                #Draw square pattern based on mode
+                if mode == "Horizontal Stripes": #Draw horizontal lines
+                    if(row%2 == 0):
+                        drawSquare = False
+                    else:
+                        drawSquare = True
+                elif mode == "Vertical Stripes": #Draw vertical lines
+                    if(column%2 == 0):
+                        drawSquare = False
+                    else:
+                        drawSquare = True
+                elif mode == "Solid": #Leave image blank - background only
+                    drawSquare = False
+                else: #By default, draw checkerboard pattern
+                    drawSquare = not drawSquare
+                if drawSquare:
+                    drawObject.rectangle([x0, y0, x1, y1], fill=foreground, outline=None, width=0)
+                #print(str([x0, y0, x1, y1]))
+                x0 = x1 #Increment x0 position
+                column += 1
+                
+            y0 = y1 #Increment y0 position
+            #print(str(row) + " " + str(column) + " " + str(count))
+            row += 1
+        return image
+        
     
     cageList = [None]*nCages
     driveGroup = None #Whether uploading to set A or set B
     statusLabel.config(text="Please insert USB drive...")
+    imageList = None
     for cage in range(len(cageList)): #Export once for each cage
         protocolString = parseProtocol()
         mountDir = findUSB()
         if mountDir is None:
             return
         exportFiles(protocolString, mountDir)
-    time.sleep(1)
+    time.sleep(2)
     statusLabel.config(text="Protocol upload complete!")
     uploadButton.config(text="Quit")
 if __name__ == '__main__':
