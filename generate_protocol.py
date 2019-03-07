@@ -1,364 +1,409 @@
 # !/usr/bin/env/python3.6
-
-import os
-import sys
-from random import randint
-from shutil import copyfile
-import psutil
-import time
-from msvcrt import kbhit #Log keypress events - note: getch() is blocking
-
 #Install instructions for psutil - https://github.com/giampaolo/psutil/blob/master/INSTALL.rst
 #Follow the same instructions for pygame
 
-global imageDir
-imageDir = None
-#condition that number is positive
-positive_condition = lambda x: int(x) > 0
+from shutil import copyfile
+import sys #Allows program to exit on completion
+import psutil #Gives access to USB drive mount events
+import time #Gives access to delays and timing
+import PIL #Draw images and save as PNG
+from tkinter import * #GUI library
+from tkinter import font
+import re #REGEX library
+import threading #Allow running the protocol generator as a separate thread to not lock the GUI
+import queue #Allow kill flag to be sent to threads
+import win32api #Get name of USB drive - windows only
 
-#get an input number subject to a condition
-def inputDigit(message, condition=lambda x: True):
-    d = None
-    while not d or not d.isdigit() or not condition(d):
-        d = input(message)
-    d = int(d)
-    return d
+nCages = 4 #Global variable declaring number of cages
 
-#ask user if would like to use presets
-##presets implemented for 4 nights as per email
-def usePresets():
-    global images_and_times #list of images and duration of exposure
-    global fixed_times      #are times fixed or within a range
-    global fixed_order      #order fixed or random
-    global off_img          #(optional) image to be shown when screen is 'off', i.e. black image
-    global off_time         #duration of off image
-    global reward_set       #images that are rewards
-    global off_interperse   #use with fixed order. Is Off image interspersed or at the end of the cycle
-    global off_spacing      #use without fixed order. After how many images should off image be shown
-    global imageDir         #where images are located
-
-    preset = 0
-    #get which preset use wants or exit upon request
-    while preset not in range(1, 5):
-        preset = input('Enter preset from nights 1-4 (exit to leave preset menu): ')
-        if preset == 'exit':
-            return False
-        if preset.isdigit():
-            preset = int(preset)
-        else:
-            print('Integers or "exit" only!')
-            preset = 0
-
-    imageDir = ''
-
-    if preset == 1:
-        images_and_times = {'gray.png': experiment_length}
-        fixed_order = True
-        reward_set = ['gray.png']
-        off_img = None
-        fixed_times = True
-
-    elif preset == 2:
-        images_and_times = {'gray.png': 60, 'vertical_bw.png': 60, 'horizontal_bw.png': 60}
-        fixed_order = True
-        reward_set = ['vertical_bw.png']
-        off_img = 'black.png'
-        off_time = 420
-        fixed_times = True
-        off_interperse = False
+#This class allows functions with arguments to be run as threads: http://softwareramblings.com/2008/06/running-functions-as-threads-in-python.html
+class FuncThread(threading.Thread):
+    def __init__(self, target, *args):
+        self._target = target
+        self._args = args
+        threading.Thread.__init__(self)
+ 
+    def run(self):
+        self._target(*self._args)
 
 
-    elif preset == 3:
-        images_and_times = {'gray.png': 30, 'vertical_bw.png': 30, 'horizontal_bw.png': 30}
-        fixed_order = False
-        reward_set = ['vertical_bw.png']
-        off_img = 'black.png'
-        off_time = 120
-        fixed_times = True
-        off_spacing = 1
+def buildGUI():
+    ####See "def loadPreset()" to change default protocol settings###
+    imageDir = None
+    entryDict = {} #Values for the entry portion of the GUI - tuple - (label, var, entry)
+    imageBarDict = {} #Outputs from image select check boxes
+    prevImageBarVars = {} #Last recorded state of check boxes
+    imageList = ['Solid', 'Checkerboard', 'Horizontal Stripes', 'Vertical Stripes'] #List of images available for a protocol
+    presetList = [("Day #1", 1), ("Day #2", 2), ("Day #3", 3), ("Day #4", 4), ("Custom", 5)] #List of available presets
+    radioList = [None]*len(presetList) #List of radiobutton objects
+    presetVar = None #Preset protocol ID
+    initialPreset = 1 #Starting preset value
+    statusLabel = None #This label updates the user on the status of the program and the next required step
+    metadataBox = None #Text box object that contains the metadata
+    entryList = ["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardFreq"] #Keys to the entryDict
+    labelList = ["Minimum wheel revolutions for reward: ", #Label text for the entry frame
+                 "Maximum wheel revolutions for reward: ",
+                 "Duration of reward state (seconds): ",
+                 "Maximum time between wheel events (seconds): ",
+                 "Total duration of the experiment (hours): ",
+                 "Pattern frequency for images: ",
+                 "Reward image cycle frequency (seconds): "]
+    protocolThread = None #Thread object for generating protocol file and exporting it to a USB drive
+    killFlag = queue.Queue() #Queue object for passing kill flag to protocol thread from main thread
+    
+    def testbox(): #Make sure that there is at least one reward image selected
+        nonlocal imageBarDict
+        nonlocal prevImageBarVars
+        nonlocal statusLabel
+        nonlocal imageList
+        rSum = 0
+        cSum = 0
+        error = False
 
-    else:
-        min_duration = 12
-        max_duration = 120
-        images_and_times = {'gray.png': (min_duration, max_duration), 'vertical_bw.png': (min_duration, max_duration), 'horizontal_bw.png': (min_duration, max_duration)}
-        fixed_order = False
-        reward_set = ['vertical_bw']
-        off_img = None
-        fixed_times = False
-
-    return preset
-
-
-def getNewProtocol():
-    global images_and_times #list of images and duration of exposure
-    global fixed_times      #are times fixed or within a range
-    global fixed_order      #order fixed or random
-    global off_img          #(optional) image to be shown when screen is 'off', i.e. black image
-    global off_time         #duration of off image
-    global reward_set       #images that are rewards
-    global off_interperse   #use with fixed order. Is Off image interspersed or at the end of the cycle
-    global off_spacing      #use without fixed order. After how many images should off image be shown
-    global imageDir         #where images are located
-
-    directory = input('Enter directory where images are stored: ')
-    if not directory.endswith('/'):
-        directory += '/'
-
-    imageDir = directory
-
-    fixed_times = input('Fixed times for images? (yes/no): ').lower().startswith('y')
-
-    images_and_times = {}
-    reward_set = []
-    fixed_order = input('Fixed order? (yes/no): ').lower().startswith('y')
-
-    if fixed_times:
-
-        dir_contents = next(os.walk(directory))[2]
-        dir_contents.sort()
-        for f in dir_contents: #iterate through directory images, get info for display
-
-            if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
-                
-                img_type = input('What is image {0}? Control (c), Reward (r), Off (o), Remove from list (x), Finish list (f): '.format(f)).lower()
-                if img_type.startswith('x'): #removes image from list
-                    continue
-                if img_type.startswith('f'): #stops iterating through directory
-                    break
-
-                duration = inputDigit('Length of display for image {0}: '.format(f), positive_condition)
-
-                if img_type.startswith('o'): #off image
-                    off_img = f 
-                    off_time = duration 
-                elif img_type.startswith('r'): #reward image
-                    images_and_times[f] = duration 
-                    reward_set.append(f)
-                elif img_type.startswith('c'): #control image
-                    images_and_times[f] = duration
-                else:
-                    pass
-
-    else:
-
-        dir_contents = next(os.walk(directory))[2]
-        dir_contents.sort()
-        for f in dir_contents: #iterate through directory images, get info for display
-            if f.endswith('.png') or f.endswith('.jpg') or f.endswith('.tif'):
-
-                def valid(duration):
-                    if duration is None or type(duration) != tuple:
-                        return False
-                    i, j = duration
-                    try:
-                        i, j = int(i), int(j)
-                    except ValueError:
-                        return False
+        if len(imageBarDict) == len(imageList): #Only check when GUI is fully populated
+            for key, value in imageBarDict.items(): #Count number of active control and reward images
+                cVar, rVar = value["var"]
+                rSum += rVar.get()
+                cSum += cVar.get()
+            for key, value in imageBarDict.items():
+                cVar, rVar = value["var"]
+                if len(prevImageBarVars) == len(imageBarDict): #If previous state is fully populated
+                    prevC, prevR = prevImageBarVars[key]
+                    if rSum == 0: #If no reward image is selected, restore previous state
+                        rVar.set(prevR)
+                        cVar.set(prevC)
+                        error = True                
                     else:
-                        return i <= j
-
-                duration = None
-
-                img_type = input('What is image {0}? Control (c), Reward (r), Off (o), Remove from list (x), Finish list (f): '.format(f)).lower()
-                if img_type.startswith('x'): #removes image from list
-                    continue
-                if img_type.startswith('f'): #stops iterating through directory
-                    break
-
-                while not valid(duration):
-                    duration = (inputDigit('Minimum length of display for image {0}: '.format(f)), inputDigit('Maximum length of display for image {0}: '.format(f)))
-
-                if img_type.startswith('o'):
-                    off_img = f 
-                    off_time = duration
-                elif img_type.startswith('r'):
-                    images_and_times[f] = duration
-                    reward_set.append(f)
-                elif img_type.startswith('c'):
-                    images_and_times[f] = duration
+                        error = False        
+                prevImageBarVars[key] = (cVar.get(), rVar.get()) #Update previous state to current state
+                if error:
+                    statusLabel.config(text="ERROR: There must be at least one reward image in the protocol.")
                 else:
-                    pass
+                    statusLabel.config(text = "Set protocol parameters and press \"Upload\"...")
+    
+    #Verify that all entries in the GUI are valid
+    def testEntry(proceed):
+        nonlocal entryDict
+        nonlocal statusLabel
+        nonlocal entryList
+        nonlocal imageBarDict
+        nonlocal metadataBox
+        nonlocal uploadButton
+        nonlocal protocolThread
+        nonlocal killFlag
+        #["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardFreq"]
+        error = False
+        if len(entryDict) == len(entryList): #Only start proofreading if GUI is fully populated 
+            for key, value in entryDict.items(): #Check for any negative entries
+                try:
+                    if value["var"].get() < 0:
+                        statusLabel.config(text="ERROR: " + key + " cannot be a negative value.")
+                        error = True
+                    if key in ["minReward", "maxReward"] and not value["var"].get().is_integer(): #These values can only be integers
+                        statusLabel.config(text="ERROR: " + key + " must be an integer value.")
+                        error = True
+                except:
+                    statusLabel.config(text="ERROR: " + key + " is not a valid number - check syntax.")
+                    error = True               
 
-    if off_img:
-        if fixed_order:
-            off_interperse = input('Should off image be at the end of cycle (e) or after each image (a)?: ').lower().startswith(a)
+            if entryDict["minReward"]["var"].get() > entryDict["maxReward"]["var"].get():
+                statusLabel.config(text="ERROR: minReward cannot be greater than maxReward.")
+                error = True
+                
+            if not error and statusLabel is not None:
+                statusLabel.config(text = "Set protocol parameters and press \"Upload\"...")
+                
+                if proceed:
+                    if uploadButton['text'] == "Upload":
+                        #Run the protocol generator as a separate thread from the GUI so that the GUI doesn't lock up       
+                        killFlag.put(1)
+                        protocolThread = threading.Thread(target=uploadProtocol, args=(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton))
+                        toggleGUI('disabled')
+                        protocolThread.start()
+                        #protocolThread.join()
+                    elif uploadButton['text'] == "Quit":
+                        sys.exit()
+                    else:
+                        killFlag.put(0) #Kill protocol thread
+                        while protocolThread.is_alive(): #Wait for thread to stop
+                            time.sleep(0.1)
+                        toggleGUI('normal') #restore GUI
+
+        return not error
+            
+    def loadPreset():
+        nonlocal entryDict
+        nonlocal imageBarDict
+        nonlocal presetVar
+        nonlocal presetList
+        nonlocal statusLabel
+        presetID = presetVar.get()
+        statusLabel.config(text = "Set protocol parameters and press \"Upload\"...")
+        
+        #Apply nonlocal defaults if preset option is selected
+        if presetID < len(presetList):
+            #Set default image check state to solid control and checkerboard reward
+            for key, value in imageBarDict.items():
+                cVar, rVar = value["var"]
+                if(key == "Solid"):
+                    rVar.set(0)
+                    cVar.set(1)
+                elif(key == "Checkerboard"):
+                    rVar.set(1)
+                    cVar.set(0)
+                else:
+                    rVar.set(0)
+                    cVar.set(0)        
+            
+            #Inactivate entry boxes and check boxes
+            for key, value in entryDict.items():
+                value["entry"].config(state='disabled')
+            for key, value in imageBarDict.items():
+                cChk, rChk = value["chk"]
+                cChk.config(state='disabled')
+                rChk.config(state='disabled')
+                
+ ############################DEFAULT PROTOCOLS##########################################################################################            
+            entryDict["minReward"]["var"].set(2)
+            entryDict["maxReward"]["var"].set(20)
+            entryDict["rewardDuration"]["var"].set(10)
+            entryDict["wheelDuration"]["var"].set(10)
+            entryDict["rewardFreq"]["var"].set(entryDict["rewardDuration"]["var"].get())
+            entryDict["imageFreq"]["var"].set(8)
+            entryDict["experimentDuration"]["var"].set(12)
+            
+            #On days 1 and 2, reward never times out
+            if presetID <= 2:
+                entryDict["rewardDuration"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
+                entryDict["wheelDuration"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
+                entryDict["rewardFreq"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
+                
+                #Day 1 - Always show reward image and leave reward active - no wheel trigger needed
+                if presetID == 1:                
+                    #Set image checkbox
+                    cVar, rVar = imageBarDict["Solid"]["var"]
+                    cVar.set(0)
+     
+                    #Change any defaults
+                    entryDict["minReward"]["var"].set(0)
+                    entryDict["maxReward"]["var"].set(0)
+                   
+            #On days 2 and 3 the number of wheel revolutions for a reward is constant
+            if presetID >= 2 and presetID <= 3:
+                entryDict["minReward"]["var"].set(5)
+                entryDict["maxReward"]["var"].set(entryDict["minReward"]["var"].get()) 
+                       
+            #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
+            else:
+                pass
+
+##################################################################################################################
+        
+        #if custom is selected activate all entry options
         else:
-            off_spacing = inputDigit('Off image will be shown after every n (integer) images: ', positive_condition)
+            #Activate entry boxes and check boxes
+            for key, value in entryDict.items():
+                value["entry"].config(state='normal')
+            for key, value in imageBarDict.items():
+                cChk, rChk = value["chk"]
+                cChk.config(state='normal')
+                rChk.config(state='normal')    
+        testbox() #Make sure at least one image is selected
+    
+    def toggleGUI(state):
+        nonlocal radioList
+        nonlocal entryDict
+        nonlocal imageBarDict
+        
+        #Inactivate entry boxes, radio buttons, and check boxes
+        for key, value in entryDict.items():
+            value["entry"].config(state=state)
+        for key, value in imageBarDict.items():
+            cChk, rChk = value["chk"]
+            cChk.config(state=state)
+            rChk.config(state=state)
+        for b in radioList:
+            b.config(state=state)
+            
+        #Switch button state
+        if state == 'disabled':
+            uploadButton.config(text="Cancel")
+        else:
+            uploadButton.config(text="Upload")
+            loadPreset() #Setup GUI to match current preset
+        
+    gui = Tk()
+    gui.title("Protocol generator...")
 
+    #Initialize frame set
+    frameList = ["entry", "check", "radio", "metadata", "button"]
+    frameDict = {}
+    for row in range(len(frameList)):
+        frameDict[frameList[row]] = Frame(master=gui)
+        frameDict[frameList[row]].grid(column=0, row=row, sticky=W)
+    frameDict["button"].grid(sticky=W+E) #Stretch button frame to width of window
+    
+    #Set default font to 12
+    default_font = font.nametofont("TkDefaultFont")
+    default_font.configure(size=12)
+    gui.option_add("*Font", default_font)
 
-def generateSequence_fixedOrder():
+    #Create set of entry boxes for entering in protocol                 
+    for a in range(len(entryList)):
+        label = Label(frameDict["entry"], text = labelList[a], anchor=W)
+        label.grid(column=0, row=a, sticky=W)
+        var = DoubleVar(frameDict["entry"])
+        entry = Entry(frameDict["entry"], width=10, textvariable=var, justify=RIGHT, disabledforeground="BLACK", validate="focus", validatecommand=lambda: testEntry(False))
+        entry.grid(column=1, row=a, sticky=E, pady=10, padx=(0,5))
+        entryDict[entryList[a]] = {"label": label, "var": var, "entry": entry}
+    
+    #Create pair of check box bars to select preset images for control and reward
+    row = a+1
+    controlImageLabel = Label(frameDict["check"], text = "Control images(s): ", anchor=W)
+    controlImageLabel.grid(column=0, row=row, sticky=W, padx=(0,150))
+    rewardImageLabel = Label(frameDict["check"], text = "Reward images(s): ", anchor=W)
+    rewardImageLabel.grid(column=1, row=row, sticky=W)
+    row += 1
 
-    sequence_imgs = [] #final sequence of images through entirety of experiment
-    sequence_times = [] #final sequence of duration of image displays through entirety of experiment
-    total_time = 0
-    images = list(images_and_times.keys())
-    k = 0
+    
+    imageBarDict = {}
+    for a in imageList:
+        cVar = IntVar()
+        cChk = Checkbutton(frameDict["check"], text=a, variable=cVar, command=testbox, disabledforeground="BLACK")
+        cChk.grid(column=0, row=row, sticky=W)
+        rVar = IntVar()
+        rChk = Checkbutton(frameDict["check"], text=a, variable=rVar, command=testbox, disabledforeground="BLACK")
+        rChk.grid(column=1, row=row, sticky=W)
+        imageBarDict[a] = {"var": (cVar, rVar), "chk": (cChk, rChk)}
+        row += 1
+    
+    #Create preset radio buttons
+    presetLabel = Label(frameDict["radio"], text = "Select protocol preset: ")
+    presetLabel.pack(side=TOP, anchor=W)
+    presetVar = IntVar()
+    presetVar.set(initialPreset) # initialize
+    a=0
+    for text, mode in presetList:
+        b = Radiobutton(frameDict["radio"], text=text, variable=presetVar, value=mode, command=loadPreset)                   
+        b.pack(side=LEFT)
+        radioList[a] = b
+        a += 1
+    
+    #Add text box with scroll bar for entering any metadata
+    metadataBox = Text(frameDict["metadata"], height=5, width=50)
+    metadataBox.pack(side=LEFT, padx=5, pady=5)
+    metadataBox.insert(END, "Type metadata here...")
+    textScroll = Scrollbar(frameDict["metadata"])
+    textScroll.pack(side=RIGHT, padx=5, pady=5, fill=Y)
+    textScroll.config(command=metadataBox.yview)
+    metadataBox.config(yscrollcommand=textScroll.set)
+    
+    #Add upload button
+    uploadButton = Button(frameDict["button"], text="Upload", command=lambda: testEntry(True)) #On click, check entries and upload if valid
+    uploadButton.pack(side=RIGHT, anchor=E, padx=10, pady=10)
+    statusLabel = Label(frameDict["button"], text = "Set protocol parameters and press \"Upload\"...")
+    statusLabel.pack(side=LEFT, anchor=W) 
+    
+    #Initialize to default preset
+    loadPreset()
+    
+    gui.mainloop() #Blocks rest of code from executing - similar to while True with update loop
 
-    while total_time < experiment_length:
-
-        img = images[k % len(images)] # % allows for wrapping around the array
-        k += 1
-        duration = images_and_times[img]
-        if type(duration) == tuple:
-            duration = randint(duration[0], duration[1]) #duration within specified range if time is not fixed
-
-        sequence_imgs.append(img)
-        sequence_times.append(duration)
-        total_time += duration
-
-        if total_time > experiment_length:
-            break
-
-        if off_img and (off_interperse or k % len(images) == 0):
-            sequence_imgs.append(off_img)
-            duration = off_time
-            if type(duration) == tuple: #if time is variable, get random value within range
-                duration = randint(duration[0], duration[1]) #duration within specified range if time not fixed
-            sequence_times.append(duration)
-            total_time += duration
-
-    return sequence_imgs, sequence_times
-
-
-def generateSequence_noOrder():
-
-    sequence_imgs = [] #final sequence of images through entirety of experiment
-    sequence_times = [] #final sequence of duration of image displays through entirety of experiment
-    total_time = 0
-    images = list(images_and_times.keys())
-
-    k, previous = -1, -1
-    count = 0
-    while total_time < experiment_length:
-        if off_img:
-            k = randint(0, len(images) - 1)
-            count += 1
-        else: 
-            while k != previous:
-                k = randint(0, len(images) - 1)
-            previous = k
-
-        img = images[k]
-        duration = images_and_times[img]
-        if type(duration) == tuple:
-            duration = randint(duration[0], duration[1]) #duration within specified range if time not fixed
-
-        sequence_imgs.append(img)
-        sequence_times.append(duration)
-        total_time += duration
-
-        if total_time > experiment_length:
-            break
-
-        if off_img and count == off_spacing:
-            count = 0
-            sequence_imgs.append(off_img)
-            duration = off_time
-            if type(duration) == tuple: 
-                duration = randint(duration[0], duration[1]) #duration within specified range if time not fixed
-            sequence_times.append(duration)
-            total_time += duration
-
-    return sequence_imgs, sequence_times
-
-
-def generateFile(wheel_trigger, wheel_interval, reward_duration, metadata):
-
-    if fixed_order:
-        sequence_imgs, sequence_times = generateSequence_fixedOrder()
-
-    else:
-        sequence_imgs, sequence_times = generateSequence_noOrder()
-
-    mountDir = None
-
-    def saveToMounted():
-        nonlocal mountDir
+def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton):
+    global nCages
+    
+    def parseProtocol():
+        nonlocal entryDict
+        nonlocal imageBarDict
+        nonlocal metadataBox
+        
+        controlList = []
+        rewardList = []
+        
+        #Parse image sets
+        for key, value in imageBarDict.items(): #Count number of active control and reward images
+            cVar, rVar = value["var"]
+            if cVar.get() == 1:
+                controlList.append(key)
+            if rVar.get() == 1:
+                rewardList.append(key)
+        
+        return ("control image set: " + re.sub("\'", "", str(controlList)) + "\n" +
+                "reward image set: " + re.sub("\'", "", str(rewardList)) + "\n" +
+                "minimum wheel revolution: " + str(entryDict["minReward"]["var"].get()) + "\n" +
+                "maximum wheel revolution: " + str(entryDict["maxReward"]["var"].get()) + "\n" +
+                "reward duration: " + str(entryDict["rewardDuration"]["var"].get()) + "\n" +
+                "wheel duration: " + str(entryDict["wheelDuration"]["var"].get()) + "\n" +
+                "reward frequency: " + str(entryDict["rewardFreq"]["var"].get()) + "\n" +
+                "image frequency: " + str(entryDict["imageFreq"]["var"].get()) + "\n" +
+                "experiment duration: " + str(entryDict["experimentDuration"]["var"].get()) + "\n"
+                "metadata: " + str(metadataBox.get("1.0", "end"))) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget 
+    
+    def findUSB():
+        nonlocal statusLabel
+        nonlocal cageList
+        nonlocal cage
+        nonlocal driveGroup
+        mountDir = None
+        
         post_mount_locations = psutil.disk_partitions()
         pre_mount_locations = post_mount_locations #partition list prior to mounting drive
-        save_to_usb = True
-        print("Please insert USB drive, or press any key to save to default directory")
-        pre_mount_locations = post_mount_locations #partition list prior to mounting drive 
-        while save_to_usb and len(post_mount_locations) - len(pre_mount_locations) != 1:                 
-            if kbhit(): #If keypress event, abort wait for usb insertion - note: getch() is blocking
-                save_to_usb = False
-                print("Keypress detected, files will be saved to: " + str(os.getcwd())) 
-                return
+        error = False
+        while True:
+            if not killFlag.empty(): #Get kill flag if there is one in the queue - empty is blocking so check if there is a flag before getting
+                if killFlag.get() == 0: #If cancel button is pressed, exit thread
+                    return None
             post_mount_locations = psutil.disk_partitions()
             time.sleep(0.1)
-            if len(post_mount_locations) - len(pre_mount_locations) == 1: #If new partition is found, save file to new partition
+            #print(str(len(post_mount_locations)) + " " + str(len(pre_mount_locations)))
+            if not error and len(post_mount_locations) - len(pre_mount_locations) == 1: #If new partition is found, save file to new partition
                 mountDir = list(set(post_mount_locations) - set(pre_mount_locations))[0].mountpoint + '/' #new disk partition is where usb is mounted
-                print("USB drive found, files will be saved to: " + str(mountDir[:-1]))
-                return
-            elif len(post_mount_locations) - len(pre_mount_locations) == -1: #If partion was removed, thumb drive was removed so reset partition list
-                print("Thumb drive removed...")
-                print("Please insert USB drive, or press any key to save to default directory")
-                pre_mount_locations = post_mount_locations #partition list prior to mounting drive 
-    saveToMounted()
-    images = list(images_and_times.keys())
-
-    if mountDir is not None:
-        pfileName = mountDir + 'Protocol.txt'
-        if 'images' not in os.listdir(mountDir):
-            os.mkdir(mountDir + 'images/')
-        for img in images:
-            try:
-                copyfile(imageDir + img, mountDir + 'images/' + img)
-            except:
-                print('could not copy '+ img+ ' to usb')
-    else:
-        pfileName = 'Protocol.txt'
-
-    with open(pfileName, 'w') as pfile: #write protocol specs to protocol file
-        pfile.write('image: [%s]' % ', '.join(map(str, sequence_imgs)))
-        pfile.write('\n')
-        pfile.write('time: [%s]' % ', '.join(map(str, sequence_times)))
-        pfile.write('\n')
-        pfile.write('reward: [%s]' % ', '.join(map(str, reward_set)))
-        pfile.write('\n')
-        pfile.write('wheel trigger: {0}'.format(wheel_trigger))
-        pfile.write('\n')
-        pfile.write('reward duration: {0}'.format(reward_duration))
-        pfile.write('\n')
-        pfile.write('wheel interval: {0}'.format(wheel_interval))
-        pfile.write('\n')
-        pfile.write('This is metadata............')
-        pfile.write('\n')
-        pfile.write(metadata)
-
-
-
-def main():
-    global experiment_length
-    global images_and_times
-    global fixed_times
-    global fixed_order
-    global off_img
-    off_img = None
-    global off_time
-    global reward_set
-    global off_interperse #for use with fixed order
-    global off_spacing #for use with no fixed order
+                statusLabel.config(text="USB drive found, files will be saved to: " + str(mountDir[:-1]))
+                driveName, dummy, dummy, dummy, dummy = win32api.GetVolumeInformation(str(mountDir)) #Get name of mounted drive
+                if re.match(r"^CAGE [1-len(cageList)][A-B]$", driveName): #Check that USB has valid name
+                    if driveGroup is None:
+                        driveGroup = driveName[-1:]
+                    else:
+                        if driveName[-1:] == driveGroup:
+                            if driveName not in cageList: #Check that a protocol has not already been written for this cage
+                                cageList[cage] = driveName
+                                statusLabel.config(text="Protocol uploaded to: " + driveName + ", insert next drive...")
+                                return mountDir
+                            else:
+                                statusLabel.config(text=driveName + " has already been uploaded.  Please choose a different drive.")
+                                error = True
+                        else:
+                            statusLabel.config(text=driveName + " is not from group " + driveGroup + ".  Please choose a different drive.")
+                            error = True 
+                else:
+                    statusLabel.config(text=driveName + " is not a valid drive.  Please choose a different drive.")
+                    error = True
+            elif (not error and len(post_mount_locations) - len(pre_mount_locations) == -1) or (error and  len(post_mount_locations) - len(pre_mount_locations) == 0): #If partion was removed, thumb drive was removed so reset partition list
+                statusLabel.config(text="USB drive removed, please insert USB drive...")
+                pre_mount_locations = post_mount_locations #partition list prior to mounting drive
+                error = False
     
-    experiment_length = inputDigit("Enter experiment length in HOURS: ", positive_condition)
-    experiment_length *= (60**2) #convert hours to seconds
-
-    wheel_trigger = input('Wheel trigger (yes/no): ').lower().startswith('y')
-    wheel_interval = inputDigit('Wheel interval (seconds): ', positive_condition)
-    reward_duration = inputDigit('Duration of reward (seconds): ', positive_condition)
-    metadata = input('Enter any metadata: ')
-
-    presets = input('Use preset protocol? (yes/no): ').lower().startswith('y') #use pre-defined protocols for nights 1-4
-    loadedProtocol = False
-    if presets:
-        loadedProtocol = usePresets()
-    if not loadedProtocol:
-        getNewProtocol()
-
-    generateFile(wheel_trigger, wheel_interval, reward_duration, metadata)
-
-
-
+    def exportFiles(fileString, mountDir):
+        if mountDir is None: #If cancel button is pressed, exit thread
+            return    
+        pfileName = mountDir + 'Protocol.txt'
+        with open(pfileName, 'w') as pfile: #write protocol specs to protocol file
+            pfile.write(fileString)
+    
+    cageList = [None]*nCages
+    driveGroup = None #Whether uploading to set A or set B
+    statusLabel.config(text="Please insert USB drive...")
+    for cage in range(len(cageList)): #Export once for each cage
+        protocolString = parseProtocol()
+        mountDir = findUSB()
+        if mountDir is None:
+            return
+        exportFiles(protocolString, mountDir)
+    time.sleep(1)
+    statusLabel.config(text="Protocol upload complete!")
+    uploadButton.config(text="Quit")
 if __name__ == '__main__':
-    main()
+    buildGUI()
+
+
 
