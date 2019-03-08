@@ -18,17 +18,6 @@ nCages = 4 #Global variable declaring number of cages
 imageWidth = 1024
 imageHeight = 768
 
-#This class allows functions with arguments to be run as threads: http://softwareramblings.com/2008/06/running-functions-as-threads-in-python.html
-class FuncThread(threading.Thread):
-    def __init__(self, target, *args):
-        self._target = target
-        self._args = args
-        threading.Thread.__init__(self)
- 
-    def run(self):
-        self._target(*self._args)
-
-
 def buildGUI():
     ####See "def loadPreset()" to change default protocol settings###
     entryDict = {} #Values for the entry portion of the GUI - tuple - (label, var, entry)
