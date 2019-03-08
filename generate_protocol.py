@@ -326,9 +326,9 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         for key, value in imageBarDict.items(): #Count number of active control and reward images
             cVar, rVar = value["var"]
             if cVar.get() == 1:
-                controlList.append(key)
+                controlList.append(key + ".png")
             if rVar.get() == 1:
-                rewardList.append(key)
+                rewardList.append(key + ".png")
         imageList = list(set(rewardList + controlList)) #generate a list of all unique images used in the protocol
         preset = presetVar.get()
         for k,v in presetList:
