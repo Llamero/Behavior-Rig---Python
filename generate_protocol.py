@@ -23,7 +23,7 @@ def buildGUI():
     entryDict = {} #Values for the entry portion of the GUI - tuple - (label, var, entry)
     imageBarDict = {} #Outputs from image select check boxes
     prevImageBarVars = {} #Last recorded state of check boxes
-    imageList = ['Solid', 'Checkerboard', 'Horizontal Stripes', 'Vertical Stripes'] #List of images available for a protocol
+    imageList = ['Solid', 'Checkerboard', 'Horizontal_Stripes', 'Vertical_Stripes'] #List of images available for a protocol
     presetList = [("Day #1", 1), ("Day #2", 2), ("Day #3", 3), ("Day #4", 4), ("Custom", 5)] #List of available presets
     radioList = [None]*len(presetList) #List of radiobutton objects
     presetVar = None #Preset protocol ID
@@ -259,10 +259,10 @@ def buildGUI():
     imageBarDict = {}
     for a in imageList:
         cVar = IntVar()
-        cChk = Checkbutton(frameDict["check"], text=a, variable=cVar, command=testbox, disabledforeground="BLACK")
+        cChk = Checkbutton(frameDict["check"], text=re.sub(r"_", " ", a), variable=cVar, command=testbox, disabledforeground="BLACK")
         cChk.grid(column=0, row=row, sticky=W)
         rVar = IntVar()
-        rChk = Checkbutton(frameDict["check"], text=a, variable=rVar, command=testbox, disabledforeground="BLACK")
+        rChk = Checkbutton(frameDict["check"], text=re.sub(r"_", " ", a), variable=rVar, command=testbox, disabledforeground="BLACK")
         rChk.grid(column=1, row=row, sticky=W)
         imageBarDict[a] = {"var": (cVar, rVar), "chk": (cChk, rChk)}
         row += 1
@@ -307,6 +307,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         nonlocal imageBarDict
         nonlocal metadataBox
         nonlocal imageList
+        nonlocal driveName
         
         controlList = []
         rewardList = []
@@ -325,8 +326,9 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 preset = k
         
         return ("experiment preset: " + preset + "\n" +
+                "USB drive ID: " + driveName + "\n" + 
                 "control image set: " + re.sub("\'", "", str(controlList)) + "\n" +
-                "reward image set: " + re.sub("\'", "", str(rewardList)) + "\n" +
+                "reward image subset: " + re.sub("\'", "", str(rewardList)) + "\n" +
                 "minimum wheel revolution: " + str(entryDict["minReward"]["var"].get()) + "\n" +
                 "maximum wheel revolution: " + str(entryDict["maxReward"]["var"].get()) + "\n" +
                 "reward duration: " + str(entryDict["rewardDuration"]["var"].get()) + "\n" +
@@ -341,6 +343,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         nonlocal cageList
         nonlocal cage
         nonlocal driveGroup
+        nonlocal driveName
 
         mountDir = None
         
@@ -393,16 +396,16 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         for image in imageList:
             imageFile = drawImage(image, entryDict["imageFreq"]["var"].get(), (0,0,0), (0,255,0))      
             try:
-                imageFile.save(imageDir + image + ".png", format="PNG")
+                imageFile.save(imageDir + image, format="PNG")
             except:           
                 os.mkdir(imageDir)
-                imageFile.save(imageDir + image + ".png", format="PNG")
+                imageFile.save(imageDir + image, format="PNG")
                 
     def drawImage(mode, freq, foreground, background):
         global imageWidth
         global imageHeight
         
-        if(mode == "Solid"):
+        if mode.startswith("Solid"):
             br, bg, bb = background
             fr,fg,fb = foreground
             background = (round((fr+br)/2), round((fg+bg)/2), round((fb+bb)/2))
@@ -427,17 +430,17 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
             while x0 < imageWidth:  
                 x1 = round(squareWidth*(column+1)) #Calculate new position of bottom of square
                 #Draw square pattern based on mode
-                if mode == "Horizontal Stripes": #Draw horizontal lines
+                if mode.startswith("Horizontal_Stripes"): #Draw horizontal lines
                     if(row%2 == 0):
                         drawSquare = False
                     else:
                         drawSquare = True
-                elif mode == "Vertical Stripes": #Draw vertical lines
+                elif mode.startswith("Vertical_Stripes"): #Draw vertical lines
                     if(column%2 == 0):
                         drawSquare = False
                     else:
                         drawSquare = True
-                elif mode == "Solid": #Leave image blank - background only
+                elif mode.startswith("Solid"): #Leave image blank - background only
                     drawSquare = False
                 else: #By default, draw checkerboard pattern
                     drawSquare = not drawSquare
@@ -455,13 +458,15 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
     
     cageList = [None]*nCages
     driveGroup = None #Whether uploading to set A or set B
+    driveName = None #Name of current USB drive
     statusLabel.config(text="Please insert USB drive...")
     imageList = None
+    
     for cage in range(len(cageList)): #Export once for each cage
-        protocolString = parseProtocol()
         mountDir = findUSB()
         if mountDir is None:
             return
+        protocolString = parseProtocol()
         exportFiles(protocolString, mountDir)
     time.sleep(2)
     statusLabel.config(text="Protocol upload complete!")
