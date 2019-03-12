@@ -30,12 +30,9 @@ terminal = None #Instance of the lxterminal process
 mountDir = "/mnt/usb/" #The directory the USB drive will be mounted to
 
 #Experiment variables
-imageArray = [] #List of sequence of images to be shown
-timeArray = [] #Time to show each image (seconds)
+controlArray = [] #List of non-reward images to be shown
 rewardArray = [] #Images that will trigger a reward event
-wheelTrigger = None #Whether the wheel must also be spinning to trigger a reward event
-rewardDuration = None #Time in seconds after end of reward stim for mouse to get reward
-wheelInterval = None #Time in seconds since last wheel event when wheel flag is still active 
+parameterDict = {"minimum wheel revolution:": None,"maximum wheel revolution:": None, "reward duration:": None, "wheel duration:": None, "reward frequency:": None, "image frequency:": None, "experiment duration:": None}
 imageDir = "/home/pi/exp_Images/" #Directory to transfer images to on the SD card
 expFile = "Protocol.txt" #Name of the protocol file to be used - must have .txt extension
 resultsFile = None #Name of active reuslts file
@@ -50,6 +47,7 @@ pinPump = 29 #TTL output to pump trigger
 doorOpen = True #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
+syncDelay = 0.005 #Sleep delay between GPIO queries to reduce CPU load
 
 def hasher(file):
     HASH = hashlib.md5() #MD5 is used as it is faster, and this is not a cryptographic task
@@ -71,12 +69,12 @@ def import_package(p):
     try:
         #Needs directory hint - 1) dir when pip is run in sudo, 2) dir when pip is run without sudo, 3) dir when package loaded with apt-get
         #https://www.raspberrypi.org/forums/viewtopic.php?t=213591                                              
-        file, pathname, description = imp.find_module(p, ["/usr/local/lib/python2.7/dist-packages", "/home/pi/.local/lib/python2.7/site-packages", "/usr/lib/python2.7/dist-packages"]) 
+        file, pathname, description = imp.find_module(p, ["/usr/local/lib/python2.7/dist-packages", "/home/pi/.local/lib/python2.7/site-packages", "/usr/lib/python2.7/dist-packages", "/usr/local/lib/python3.5/dist-packages", "/home/pi/.local/lib/python3.5/site-packages", "/usr/lib/python3.5/dist-packages"]) 
         module_obj = imp.load_module(p, file, pathname, description)
         lxprint(p + " is already installed...")
         return module_obj
           
-    #If still not sudo, elevate package is not installed, so install elevate
+    #If pachage is not found, use PIP3 to download package
     except ImportError:
         lxprint("Downloading " + p + "...")
         
@@ -84,11 +82,11 @@ def import_package(p):
         checkPip()
         
         #Use .wait() rather than .communicate() as .wait() returns returnCode, while .communicate() returns tuple with stdout and stderr
-        retcode = subprocess.Popen(["(sudo pip install " + p + ")"], shell=True, stdout=devnull, stderr=devnull).wait()
+        retcode = subprocess.Popen(["(sudo pip3 install " + p + ")"], shell=True, stdout=devnull, stderr=devnull).wait()
 
         if retcode == 0:
             lxprint("Installing " + p + "...")                                             
-            file, pathname, description = imp.find_module(p, ["/usr/local/lib/python2.7/dist-packages", "/home/pi/.local/lib/python2.7/site-packages", "/usr/lib/python2.7/dist-packages"])
+            file, pathname, description = imp.find_module(p, ["/usr/local/lib/python2.7/dist-packages", "/home/pi/.local/lib/python2.7/site-packages", "/usr/lib/python2.7/dist-packages", "/usr/local/lib/python3.5/dist-packages", "/home/pi/.local/lib/python3.5/site-packages", "/usr/lib/python3.5/dist-packages"])
             module_obj = imp.load_module(p, file, pathname, description)
             lxprint(p + " is installed...")
             return module_obj
@@ -100,10 +98,10 @@ def checkPip():
     global reboot
     global devnull
     try:
-        lxprint("Checking if pip is installed...")
+        lxprint("Checking if pip3 is installed...")
         #Any outputs from program are redirected to /dev/null
         #Use Popen.communicate() instead of call so that output does not spam terminal - .communicate() will wait for process to terminate 
-        subprocess.Popen(["pip"], stdout=devnull, stderr=devnull).wait()
+        subprocess.Popen(["pip3"], stdout=devnull, stderr=devnull).wait()
         lxprint("Pip is already installed...")
         return
     except OSError as e:
@@ -365,196 +363,208 @@ def checkForUSB():
     context = pyudev.Context()
     monitor = pyudev.Monitor.from_netlink(context)
     monitor.filter_by(subsystem='usb')
-    nDevice = 0
-    nConnect = 0
-    
+    connected = False
+    labelName = None
     while True:
         time.sleep(0.2)
         #Search for whether a USB drive has been connected to the Pi
         for device in iter(monitor.poll, None):
             #If a USB drive is connected, then check for location of drive
-            if device.action == 'add' and nDevice == 0:
+            if device.action == 'add' and not connected:
                 test = 0;
                 timeStep = 0.1 #Time between checks for connected device
                 waitTime = 5 #Time out if device is not found
+                deviceFound = False #Flag for if a USB device was found
+                deviceValid = False #Flag for if USB device is valid (correct label and format)
+                deviceFormat = False #Flag for if device has correct partition format (contains a partition #1)
                 while test < waitTime:
                     test += timeStep 
                     time.sleep(timeStep)
-                    out, err = subprocess.Popen("lsblk -o name", shell=True, stdout=subprocess.PIPE).communicate()
+                    out, err = subprocess.Popen("lsblk -l -o name,label", shell=True, stdout=subprocess.PIPE).communicate() #Name returns partition directory, label returns partition name
                     outString = out.decode()
-                    if "sd" in outString:
+                    if re.search(r"sd[a-z]{1,3}", outString) and not deviceFound:
                         lxprint("USB device found...")
+                        connected = True
+                        deviceFound = True
+                    if deviceFound and re.search(r"CAGE 1[A-B]", outString):
+                        lxprint("Valid USB device...")
+                        labelName = re.search(r"CAGE 1[A-B]", outString).group(0)
+                        deviceValid = True
                         break
                     else:
                         continue
                 
                 if test >= waitTime:
-                    lxprint("ERROR: USB device was not found.  Please reconnect.")
+                    if deviceFound:
+                        labelName = re.search(r"CAGE [1-9][A-B]", outString)
+                        if labelName:
+                            lxprint("ERROR: This drive is for " + labelName.group(0)[:-1] + ", please disconnect.")
+                            
+                        else:
+                            lxprint("ERROR: USB drive is not a protocol drive, please disconnect.")
+                    else:
+                        lxprint("ERROR: USB device was not found.  Please reconnect.")
+                    break
                 
                 #Retrieve the drive location
-                dirSearch = re.search("sd[a-z]", outString)
+                dirSearch = re.search("sd[a-z]{1,3}1", outString)
+                if not dirSearch:
+                    dirSearch = re.search("sd[a-z]{1,3}", outString)
                 if dirSearch:
-                    USBdir = "/dev/" + dirSearch.group(0) + "1"
-                    
-                    #Mount the USB drive
-                    subprocess.call("sudo mkdir -p " + mountDir, shell=True) #Create directory to which to mount the USB drive if it doesn't exist
-                    subprocess.call("sudo mount -o uid=pi,gid=pi " + USBdir + " " + mountDir, shell=True) #Mount USB to directory in user "pi"
-                    if(retrieveExperiment()):
-                        lxprint("SUCCESS!")
-                        lxprint("Starting experiment...")
-                        runExperiment()
-                    else:
-                        lxprint("FAILURE!")
-                    input("Press enter...")
-                    subprocess.call("sudo eject " + USBdir, shell=True) #Install eject using command sudo apt-get install eject
-                    lxprint("USB drive is unmounted.  It is safe to remove the drive...")
-                    nDevice = 1
-                    nConnect += 1
+                    if deviceValid:
+                        USBdir = "/dev/" + dirSearch.group(0)
                         
+                        #Mount the USB drive
+                        subprocess.call("sudo mkdir -p " + mountDir, shell=True) #Create directory to which to mount the USB drive if it doesn't exist
+                        subprocess.call("sudo mount -o uid=pi,gid=pi " + USBdir + " " + mountDir, shell=True) #Mount USB to directory in user "pi"
+                        if(retrieveExperiment(labelName)):
+                            lxprint("SUCCESS!")
+                            lxprint("Starting experiment...")
+##############################                            runExperiment()
+                        else:
+                            lxprint("FAILURE!")
+                        input("Press enter...")
+                        subprocess.call("sudo eject " + USBdir, shell=True) #Install eject using command sudo apt-get install eject
+                        lxprint("USB drive is unmounted.  It is safe to remove the drive...")
+                    else:
+                        lxprint("USB drive is unmounted.  It is safe to remove the drive...")
+                    
                 else:
                     lxprint("ERROR: USB device is no longer found.  Please reconnect.")
-                
             
             #if a USB drive is disconnected, print result
-            if device.action == 'remove' and nDevice == 1:
-                nDevice = 0
+            if device.action == 'remove':
                 lxprint("USB drive has been removed...")
                 return
                 
-def retrieveExperiment():
+def retrieveExperiment(driveLabel):
     global mountDir
     global imageDir
     global expFile
     global resultsFile
     global resultsFileBase
-    global imageArray
-    global timeArray
+    global controlArray
     global rewardArray
     global imageExt
-    global wheelTrigger
-    global rewardDuration
-    global wheelInterval
+    global parameterDict
+    
+    #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
+    numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
+    rx = re.compile(numeric_const_pattern, re.VERBOSE)
+    
+    def matchString(key, line):
+        nonlocal driveLabel
+        
+        refString = None #The string to be tested against
+        if(key == "USB drive ID:"):
+            refString = driveLabel
+        
+        #Search for refernce string in line from protocol file
+        if refString in line:
+            lxprint(key + " reference \"" + driveLabel + "\" matches protocol \"" + line + "\"...")
+            return 1
+        else:
+            lxprint("ERROR in " + key + " reference \"" + driveLabel + "\" does not match protocol \"" + line + "\"...")
+            return 0
+
+    def parseList(key, line):
+        global controlArray
+        global rewardArray
+        global imageExt
+        
+        refArray = []
+        
+        #Search for a list in the line string
+        listArray = [None] #Initialize the protocol list array
+        line = "".join(line.split()) #This removes all white space - split cuts on \r\n\t and " ", then join puts the remaining bits back into a string
+        listMatch = re.search("\[.*\]", line)
+        
+        #If there is a valid list string, parse the string
+        if listMatch: 
+            listString = listMatch.group(0)
+            listString = listString[1:-1] #Remove first and last character - "[ ]"
+            listArray = listString.split(",")
+        
+        
+            if not (len(listArray) == 1 and listArray[0] == ""): #Parse images if array is not empty 
+                for i in listArray:
+                    if not i.endswith(imageExt):
+                        lxprint("ERROR: Invalid extension in " + key[:-1] + ", \"" + i + "\" is not \"" + imageExt + "\"...")
+                        return 0
+                
+                #If loop completes, then image list is valid
+                refArray = listArray    
+                lxprint(key[:-1] + " parsed: " + str(refArray))
+                
+            elif key == "reward image set:":
+                refArray = []
+                lxprint("ERROR: No reward images found, there must be at least one reward image specified...")
+                return 0
+            
+            else:
+                refArray = []
+                lxprint(key[:-1] + " parsed: " + str(refArray))
+
+        if (key == "control image set:"):
+            controlArray = refArray
+        elif (key == "reward image set:"):
+            rewardArray = refArray
+        return 1
+    
+    def parseNum(key, line):
+        global parameterDict
+        nonlocal rx
+        
+        listMatch = rx.search(line)
+        if listMatch:
+            parameterDict[key] = float(listMatch.group(0))
+            if(parameterDict[key] >= 0):
+                lxprint(key[:-1] + " parsed: " + str(parameterDict[key]))
+                return 1
+            else:
+                lxprint("ERROR: " + key + " \"" + str(parameterDict[key]) + "\" is less than 0 seconds.")
+                return 0
+        else:
+            lxprint("ERROR: \"" + key[:-1] + "\" cannot be parsed...")
+            
+    
+    
     f = Path(mountDir + expFile)
     #Extract experiment protocol and make sure it is valid
-    valid = 0 #Counter to ensure all necessary parts are included in protocol file
-    nProtocol = 6 #Number of protocol files to be parsed in protocol file
     lines = None #Export of protocol to RAM so it can be added as a header to the results file
+    protocolSearchDict = {"USB drive ID:": matchString, "control image set:": parseList, "reward image set:": parseList, "minimum wheel revolution:": parseNum,"maximum wheel revolution:": parseNum, "reward duration:": parseNum, "wheel duration:": parseNum, "reward frequency:": parseNum, "image frequency:": parseNum, "experiment duration:": parseNum} 
     if f.is_file():
         #Append date to protocol file to flag it as being used and prevent accidental reuse
         protocolHash = hasher(mountDir + expFile)
         newExpFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", expFile)
-        os.rename(mountDir + expFile, mountDir + newExpFile)
-#        newExpFile = expFile
+#        os.rename(mountDir + expFile, mountDir + newExpFile)
+        newExpFile = expFile
         
         #Parse the protocol file
         with open(mountDir + newExpFile, "r") as exp:
             lines = exp.readlines()
             exp.seek(0) #Return back to the start of the file
-            for line in exp:
-                listArray = [None] #Initialize the protocol list array
-                line = "".join(line.split()) #This removes all white space - split cuts on \r\n\t and " ", then join puts the remaining bits back into a string
-                listMatch = re.search("\[.*\]", line)
-                if listMatch is not None:
-                    listString = listMatch.group(0)
-                    listString = listString[1:-1] #Remove first and last character - "[ ]"
-                    listArray = listString.split(",")
-                if(line.startswith("image:")):
-                    imageArray = listArray
-                    if len(imageArray) == 0 or None in imageArray or False in imageArray: #Make sure array is filled and valid, False  = "" for strings
-                        lxprint("ERROR: Image list in protocol file cannot be parsed...")
-                    else:
-                        for i in imageArray:
-                            if not i.endswith(imageExt):
-                                lxprint("ERROR: Invalid extension in image list, \"" + i + "\" is not \"" + imageExt + "\"...")
-                                valid = -1
-                        if valid != -1:
-                            lxprint("Image list parsed...")
-                            valid += 1
-                elif(line.startswith("time:")):
-                    try:
-                        timeArray = list(map(float, listArray)) #Create list of floats from list of strings
-                        for n in timeArray:
-                            if n <= 0:
-                                lxprint("ERROR: Time \"" + str(n) + "\" is less than or equal to 0 seconds.")
-                                return False
-                        if len(timeArray) == 0 or None in timeArray or False in timeArray:
-                            lxprint("ERROR: Time list in protocol file cannot be parsed...")
-                        else:
-                            lxprint("Time list parsed...")
-                            valid += 1
-                    except:
-                        lxprint("ERROR: Time list in protocol file cannot be parsed...")
-                elif(line.startswith("reward:")):
-                    rewardArray = listArray
-                    if len(rewardArray) == 0 or None in rewardArray or False in rewardArray:
-                        lxprint("ERROR: Reward list in protocol file cannot be parsed...")
-                    else:
-                        for i in rewardArray:
-                            if not i.endswith(imageExt):
-                                lxprint("ERROR: Invalid extension in reward list, \"" + i + "\" is not \"" + imageExt + "\"...")
-                                valid = -1
-                        if valid != -1:
-                            lxprint("Reward list parsed...")
-                            valid += 1
-                elif(line.startswith("wheeltrigger:")): #String is one word all all white space is removed from line
-                    if(("True" in line) ^ ("False" in line)): #xor is used to ensure only one of the two is selected
-                        if("True" in line):
-                            wheelTrigger = True
-                        elif("False" in line):
-                            wheelTrigger = False
-                        valid += 1
-                        lxprint("Wheel trigger parsed...")
-                    else:
-                        wheelTrigger = None
-                        lxprint("ERROR: Wheel trigger is not exclusively \"True\" or \"False\", wheel trigger cannot be parsed...")
-                elif(line.startswith("rewardduration:")): #String is one word all all white space is removed from line
-                    #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
-                    numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
-                    rx = re.compile(numeric_const_pattern, re.VERBOSE)
-                    listMatch = rx.search(line)
-                    if(listMatch is not None):
-                        rewardDuration = float(listMatch.group(0))
-                        if(rewardDuration > 0):
-                            valid += 1
-                            lxprint("Reward duration parsed...")
-                        else:
-                            lxprint("ERROR: Reward duration \"" + str(rewardDuration) + "\" is less than or equal to 0 seconds.")
-                            rewardDuration = None
-                    else:
-                        rewardDuration = None
-                        lxprint("ERROR: Reward duration cannot be parsed...")
-                elif(line.startswith("wheelinterval:")): #String is one word all all white space is removed from line
-                    #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
-                    numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
-                    rx = re.compile(numeric_const_pattern, re.VERBOSE)
-                    listMatch = rx.search(line)
-                    if(listMatch is not None):
-                        wheelInterval = float(listMatch.group(0))
-                        if(wheelInterval > 0):
-                            valid += 1
-                            lxprint("Wheel interval parsed...")
-                        else:
-                            lxprint("ERROR: Wheel interval \"" + str(wheelInterval) + "\" is less than or equal to 0 seconds.")
-                            wheelInterval = None
-                    else:
-                        wheelInterval = None
-                        lxprint("ERROR: Wheel interval cannot be parsed...")
-                else:
-                    pass
-                
-        #If all parts of protocl were parsed, check that all images are available and move them to the SD card
-        if valid == nProtocol:
-            #Verify that the time and image lists are of equal length
-            if len(imageArray) != len(timeArray):
-                lxprint("ERROR: image array (" + str(len(imageArray)) + ") and time array (" + str(len(timeArray)) + ") are not equal length...")
-                return False
-            
-            #Verify that the reward list is a subset of the image list
-            if not set(rewardArray).issubset(imageArray):
-                lxprint("ERROR: Reward images are not a subset of all images in the protocol...")
-                return
+            for line in exp:               
+                for key, func in protocolSearchDict.items():
+                     if(line.startswith(key)):
+                        protocolSearchDict[key] = func(key, line.split(key, 1)[1].strip()) #Send key and data afer ":" with leading and trailing whitespace removed
+
+        #Check dict and flag missing components
+        nValid = 0
+        for key, value in protocolSearchDict.items():
+            if type(value) is int:
+                nValid += value
+            else:
+                lxprint("Cannot find: \"" + key + "\" in protocol file...")
+        lxprint(str(nValid) + " of " + str(len(protocolSearchDict)) + " lines parsed...")        
+        
+        
+        #If all components parsed successfully, check that all images are available 
+        if nValid == len(protocolSearchDict): #If all elements passed parsing
+
             #Verify that all images in the protocol are included in the file directory
-            imageSet = list(set(imageArray)) #Create a list of all unique images in the protocol using "set"
+            
+            imageSet = list(set(controlArray + rewardArray)) #Create a list of all unique images in the protocol using "set"
             lxprint("Transferring images to SD card...")
             subprocess.call("sudo mkdir -p " + imageDir, shell=True) #Create directory to which to transfer images if it doesn't exist
             for i in imageSet:
@@ -562,28 +572,30 @@ def retrieveExperiment():
                 if f.is_file():
                     subprocess.call("sudo cp " + mountDir + "images/" + i + " " + imageDir, shell=True) #Move valid images to the SD card
                 else:
-                    lxprint("ERROR: File \"" + i + "\" could not be found in the image directory...")
+                    lxprint("ERROR: File \"" + i + "\" could not be found in \"" + mountDir + "images/\"")
                     return False
-        else:
-            lxprint("ERROR: Could not parse protocol file, " + str(valid) + " of " + str(nProtocol) + " protocols parsed...")
-            return False    
+            
+            #Export the protocol to the results file
+            if lines is not None:
+                resultsFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", resultFileBase)
+                lines.insert(0, "Date: " + str(datetime.now()) + "\r\n")
+            with open(mountDir + resultsFile, "w+") as f:
+                for a in lines:
+                    f.write(a)
+                    
+                #Add file hashes
+                f.write("Protocol hash: " + protocolHash + "\r\n")
+                f.write("Image hashes: \r\n")
+                for i in sorted(set(controlArray + rewardArray)):
+                    f.write(i + " - " + hasher(imageDir + i) + "\r\n")
+                f.write("\r\n-------------------------------Start of experiment-----------------------------------------------\r\n\r\n")
+            return True
+        
     else:
         lxprint("ERROR: \"" + expFile + "\" not found on USB drive.")
-        return False
-    #Export the protocol to the results file
-    if lines is not None:
-        resultsFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", resultFileBase)
-        lines.insert(0, "Date: " + str(datetime.now()) + "\r\n")
-    with open(mountDir + resultsFile, "w+") as f:
-        for a in lines:
-            f.write(a)
-        #Add file hashes
-        f.write("Protocol hash: " + protocolHash + "\r\n")
-        f.write("Image hashes: \r\n")
-        for i in sorted(set(imageArray)):
-            f.write(i + " - " + hasher(imageDir + i) + "\r\n")
-        f.write("\r\n-------------------------------Start of experiment-----------------------------------------------\r\n\r\n")
-    return True
+    
+    return False
+
 
 #---------------------------------Run experiment-----------------------------------------------------------------------------------------------------------------------------------------------
 def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
@@ -594,6 +606,7 @@ def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
     global imageArray
     global rewardArray
     global wheelTrigger
+    global syncDelay
     
     def sendLog(dir, image):
         #Send image data to log
@@ -651,6 +664,7 @@ def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
                                                 
         #Wait specified delay time, checking for keypress event      
         while time.time() < stopTime:
+            time.sleep(syncDelay)
             #Display image
             if imageOff and rewardImage and (wheelActive.value == 1 or not wheelTrigger):
                 imageOff = displayImage(pictures[imageArray[imageIndex]])
@@ -673,6 +687,7 @@ def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
 def logProcess(connGPIO, connWheel, connImage, stopQueue):
     global mountDir
     global resultsFile
+    global syncDelay
     connArray = []
     connArray.append(connGPIO)
     connArray.append(connWheel)
@@ -681,6 +696,7 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
     f = open(mountDir + resultsFile, "a") #Create text file to store results
     run = True
     while run:
+        time.sleep(syncDelay)
         #If a data entry is available in the queue, process it
         #multiprocessing.connection.wait
         for r in wait(connArray, timeout=0.1):
@@ -718,6 +734,7 @@ def GPIOprocess(pin, connLog, stopQueue, stateFlag):
     global wheelInterval
     global rewardDuration
     global doorOpen
+    global syncDelay
 
     run = True
     header = '' #Device string
@@ -750,6 +767,7 @@ def GPIOprocess(pin, connLog, stopQueue, stateFlag):
         eventStop = time.time() #Track when the wheel flag goes false after last wheel event
         pumpOn = False
         while run:
+            time.sleep(syncDelay)
             #If reward image is active, reset the reward duration timer
             if(pin == pinDoor):
                 if(stateFlag.value == 1):
