@@ -47,7 +47,7 @@ pinPump = 29 #TTL output to pump trigger
 doorOpen = True #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
-syncDelay = 0.005 #Sleep delay between GPIO queries to reduce CPU load (s)
+syncDelay = 0.005 #Sleep delay between GPIO queries to reduce CPU load
 
 def hasher(file):
     HASH = hashlib.md5() #MD5 is used as it is faster, and this is not a cryptographic task
@@ -420,7 +420,7 @@ def checkForUSB():
                         if(retrieveExperiment(labelName)):
                             lxprint("SUCCESS!")
                             lxprint("Starting experiment...")
-                            runExperiment()
+##############################                            runExperiment()
                         else:
                             lxprint("FAILURE!")
                         input("Press enter...")
@@ -537,7 +537,7 @@ def retrieveExperiment(driveLabel):
         #Append date to protocol file to flag it as being used and prevent accidental reuse
         protocolHash = hasher(mountDir + expFile)
         newExpFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", expFile)
-##################################        os.rename(mountDir + expFile, mountDir + newExpFile)
+#        os.rename(mountDir + expFile, mountDir + newExpFile)
         newExpFile = expFile
         
         #Parse the protocol file
@@ -598,23 +598,21 @@ def retrieveExperiment(driveLabel):
 
 
 #---------------------------------Run experiment-----------------------------------------------------------------------------------------------------------------------------------------------
-def imageProcess(connLog, stopQueue, rewardActive, wheelActive, doorActive):
+def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
     global imageDir
+    global displayTime
     global expStart
-    global controlArray
+    global timeArray
+    global imageArray
     global rewardArray
+    global wheelTrigger
     global syncDelay
-    global parameterDict
-    
-    {"minimum wheel revolution:": None,"maximum wheel revolution:": None, "reward duration:": None, "wheel duration:": None, "reward frequency:": None, "image frequency:": None, "experiment duration:": None}
-    rewardDuration = parameterDict["reward duration:"]
-    rewardFreq = parameterDict["reward frequency:"]
     
     def sendLog(dir, image):
         #Send image data to log
         #HASH = ", Hash: " + hasher(dir + image) #Get image hash - computing hash takes 2 ms
         HASH = ""
-        timer = time.time() - expStart #Get experiment time
+        timer = time.time() - expStart #Get epxeriment time
         connLog.send("Image - Name: " + image + HASH + ", Time: " + str(time.time() - expStart))
         return 1
     
@@ -732,14 +730,11 @@ def GPIOprocess(pin, connLog, stopQueue, stateFlag):
     global pinPump
     global wheelBounce
     global doorBounce
+    global GPIOstring
+    global wheelInterval
+    global rewardDuration
     global doorOpen
-    global syncDelay 
-    global parameterDict
-    
-    {"minimum wheel revolution:": None,"maximum wheel revolution:": None, "reward duration:": None, "wheel duration:": None, "reward frequency:": None, "image frequency:": None, "experiment duration:": None}
-    wheelInterval = parameterDict["wheel duration:"]
-    minRev = parameterDict["minimum wheel revolution:"]
-    maxRev = parameterDict["maximum wheel revolution:"]
+    global syncDelay
 
     run = True
     header = '' #Device string
@@ -832,21 +827,19 @@ def runExperiment():
     #Global Variables 
     GPIO.setmode(GPIO.BOARD) #Sets GPIO pin numbering convention
     
-    doorRec, doorSend = Pipe() #Setup a duplex line of communication for processes to send data to log process
+    GPIOrec, GPIOsend = Pipe() #Setup a duplex line of communication for processes to send data to log process
     imageRec, imageSend = Pipe()
     wheelRec, wheelSend = Pipe()
-    
-    door_image, image_door = Pipe() #Setup a duplex line of communication for coordinating rewards
-    wheel_image, image_wheel = Pipe()
     stopQueue = Value('i', 0) #Setup a shared variable to allow a keypress to flag all processes to stop
-
+    rewardActive = Value('i', 0) #Setup a shared variable to flag that a reward event is active
+    wheelActive = Value('i', 0) #Setup a shared variable to flag that a wheel event is active
     #NOTE: A pipe can only connect two processes while a queue can connect multiple processes
     #Also, a pipe is much faster than a queue.  A SimpleQueue has a simplified instruction set
     
     #Initialize Image, GPIO and logging sub processes
-    pLog = Process(target = logProcess, args=(doorRec, wheelRec, imageRec, stopQueue))
-    pDoor = Process(target = GPIOprocess, args=(pinDoor, doorSend, stopQueue, door_image))
-    pWheel = Process(target = GPIOprocess, args=(pinWheel, wheelSend, stopQueue, wheel_image))
+    pLog = Process(target = logProcess, args=(GPIOrec, wheelRec, imageRec, stopQueue))
+    pGPIO = Process(target = GPIOprocess, args=(pinDoor, GPIOsend, stopQueue, rewardActive))
+    pWheel = Process(target = GPIOprocess, args=(pinWheel, wheelSend, stopQueue, wheelActive))
     
     try:  
         lxprint("Starting")
@@ -854,7 +847,7 @@ def runExperiment():
         pLog.start() #Start subprocesses before continuing with main thread, otherwise main thread will be too busy to start subprocesses
         pGPIO.start()
         pWheel.start()
-        imageProcess(imageSend, stopQueue, image_door, image_wheel) #PyGame does not support multi-processing, so it must stay in the main thread
+        imageProcess(imageSend, stopQueue, rewardActive, wheelActive) #PyGame does not support multi-processing, so it must stay in the main thread
         pLog.terminate()
         pGPIO.terminate()
         pWheel.terminate()
