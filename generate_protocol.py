@@ -31,14 +31,14 @@ def buildGUI():
     initialPreset = 1 #Starting preset value
     statusLabel = None #This label updates the user on the status of the program and the next required step
     metadataBox = None #Text box object that contains the metadata
-    entryList = ["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardFreq"] #Keys to the entryDict
+    entryList = ["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardPeriod"] #Keys to the entryDict
     labelList = ["Minimum wheel revolutions for reward: ", #Label text for the entry frame
                  "Maximum wheel revolutions for reward: ",
                  "Duration of reward state (seconds): ",
                  "Maximum time between wheel events (seconds): ",
                  "Total duration of the experiment (hours): ",
                  "Pattern frequency for images: ",
-                 "Reward image cycle frequency (seconds): "]
+                 "Reward image cycle period (seconds): "]
     protocolThread = None #Thread object for generating protocol file and exporting it to a USB drive
     killFlag = queue.Queue() #Queue object for passing kill flag to protocol thread from main thread
     
@@ -82,7 +82,7 @@ def buildGUI():
         nonlocal uploadButton
         nonlocal protocolThread
         nonlocal killFlag
-        #["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardFreq"]
+        #["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardPeriod"]
         error = False
         if len(entryDict) == len(entryList): #Only start proofreading if GUI is fully populated 
             for key, value in entryDict.items(): #Check for any negative entries
@@ -159,7 +159,7 @@ def buildGUI():
             entryDict["maxReward"]["var"].set(20)
             entryDict["rewardDuration"]["var"].set(10)
             entryDict["wheelDuration"]["var"].set(10)
-            entryDict["rewardFreq"]["var"].set(entryDict["rewardDuration"]["var"].get())
+            entryDict["rewardPeriod"]["var"].set(entryDict["rewardDuration"]["var"].get())
             entryDict["imageFreq"]["var"].set(8)
             entryDict["experimentDuration"]["var"].set(12)
             
@@ -167,7 +167,7 @@ def buildGUI():
             if presetID <= 2:
                 entryDict["rewardDuration"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
                 entryDict["wheelDuration"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
-                entryDict["rewardFreq"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
+                entryDict["rewardPeriod"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
                 
                 #Day 1 - Always show reward image and leave reward active - no wheel trigger needed
                 if presetID == 1:                
@@ -334,7 +334,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 "maximum wheel revolution: " + str(entryDict["maxReward"]["var"].get()) + "\n" +
                 "reward duration: " + str(entryDict["rewardDuration"]["var"].get()) + "\n" +
                 "wheel duration: " + str(entryDict["wheelDuration"]["var"].get()) + "\n" +
-                "reward frequency: " + str(entryDict["rewardFreq"]["var"].get()) + "\n" +
+                "reward frame period: " + str(entryDict["rewardPeriod"]["var"].get()) + "\n" +
                 "image frequency: " + str(entryDict["imageFreq"]["var"].get()) + "\n" +
                 "experiment duration: " + str(entryDict["experimentDuration"]["var"].get()) + "\n" +
                 "metadata: " + str(metadataBox.get("1.0", "end"))) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget 
