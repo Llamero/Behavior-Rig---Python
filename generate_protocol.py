@@ -12,6 +12,7 @@ from tkinter.constants import *
 import re #REGEX library
 import threading #Allow running the protocol generator as a separate thread to not lock the GUI
 import queue #Allow kill flag to be sent to threads
+from collections import OrderedDict #Create dictionaries where object order is preserved
 if os.name != 'posix':
     import win32api #Get name of USB drive - windows only
 
@@ -31,14 +32,15 @@ def buildGUI():
     initialPreset = 1 #Starting preset value
     statusLabel = None #This label updates the user on the status of the program and the next required step
     metadataBox = None #Text box object that contains the metadata
-    entryList = ["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardPeriod"] #Keys to the entryDict
-    labelList = ["Minimum wheel revolutions for reward: ", #Label text for the entry frame
-                 "Maximum wheel revolutions for reward: ",
-                 "Duration of reward state (seconds): ",
-                 "Maximum time between wheel events (seconds): ",
-                 "Total duration of the experiment (hours): ",
-                 "Pattern frequency for images: ",
-                 "Reward image cycle period (seconds): "]
+    #entryList     #labelList
+    entryDict = OrderedDict((("Minimum wheel revolutions for reward: ", None), #Label text for the entry frame
+                             ("Maximum wheel revolutions for reward: ", None),
+                             ("Maximum duration of reward state (seconds): ", None),
+                             ("Duration of pump \"on\" state (seconds): ", None),
+                             ("Maximum time between wheel events (seconds): ", None),
+                             ("Total duration of the experiment (hours): ", None),
+                             ("Pattern frequency for images: ", None),
+                             ("Duration of each reward frame (seconds): ", None)))
     protocolThread = None #Thread object for generating protocol file and exporting it to a USB drive
     killFlag = queue.Queue() #Queue object for passing kill flag to protocol thread from main thread
     
@@ -76,28 +78,27 @@ def buildGUI():
     def testEntry(proceed):
         nonlocal entryDict
         nonlocal statusLabel
-        nonlocal entryList
         nonlocal imageBarDict
         nonlocal metadataBox
         nonlocal uploadButton
         nonlocal protocolThread
         nonlocal killFlag
-        #["minReward", "maxReward", "rewardDuration", "wheelDuration", "experimentDuration", "imageFreq", "rewardPeriod"]
+
         error = False
-        if len(entryDict) == len(entryList): #Only start proofreading if GUI is fully populated 
+        if not None in entryDict.values(): #Only start proofreading if GUI is fully populated 
             for key, value in entryDict.items(): #Check for any negative entries
                 try:
                     if value["var"].get() < 0:
                         statusLabel.config(text="ERROR: " + key + " cannot be a negative value.")
                         error = True
-                    if key in ["minReward", "maxReward"] and not value["var"].get().is_integer(): #These values can only be integers
+                    if key in ["Minimum wheel revolutions for reward: ", "Maximum wheel revolutions for reward: "] and not value["var"].get().is_integer(): #These values can only be integers
                         statusLabel.config(text="ERROR: " + key + " must be an integer value.")
                         error = True
                 except:
                     statusLabel.config(text="ERROR: " + key + " is not a valid number - check syntax.")
                     error = True               
 
-            if entryDict["minReward"]["var"].get() > entryDict["maxReward"]["var"].get():
+            if entryDict["Minimum wheel revolutions for reward: "]["var"].get() > entryDict["Maximum wheel revolutions for reward: "]["var"].get():
                 statusLabel.config(text="ERROR: minReward cannot be greater than maxReward.")
                 error = True
                 
@@ -155,19 +156,19 @@ def buildGUI():
                 rChk.config(state='disabled')
                 
  ############################DEFAULT PROTOCOLS##########################################################################################            
-            entryDict["minReward"]["var"].set(2)
-            entryDict["maxReward"]["var"].set(20)
-            entryDict["rewardDuration"]["var"].set(10)
-            entryDict["wheelDuration"]["var"].set(10)
-            entryDict["rewardPeriod"]["var"].set(entryDict["rewardDuration"]["var"].get())
-            entryDict["imageFreq"]["var"].set(8)
-            entryDict["experimentDuration"]["var"].set(12)
+            entryDict["Minimum wheel revolutions for reward: "]["var"].set(2)
+            entryDict["Maximum wheel revolutions for reward: "]["var"].set(20)
+            entryDict["Maximum duration of reward state (seconds): "]["var"].set(10)
+            entryDict["Maximum time between wheel events (seconds): "]["var"].set(10)
+            entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
+            entryDict["Pattern frequency for images: "]["var"].set(8)
+            entryDict["Total duration of the experiment (hours): "]["var"].set(12)
             
             #On days 1 and 2, reward never times out
             if presetID <= 2:
-                entryDict["rewardDuration"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
-                entryDict["wheelDuration"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
-                entryDict["rewardPeriod"]["var"].set(entryDict["experimentDuration"]["var"].get()*60*60)
+                entryDict["Maximum duration of reward state (seconds): "]["var"].set(entryDict["Total duration of the experiment (hours): "]["var"].get()*60*60)
+                entryDict["Maximum time between wheel events (seconds): "]["var"].set(entryDict["Total duration of the experiment (hours): "]["var"].get()*60*60)
+                entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Total duration of the experiment (hours): "]["var"].get()*60*60)
                 
                 #Day 1 - Always show reward image and leave reward active - no wheel trigger needed
                 if presetID == 1:                
@@ -176,13 +177,13 @@ def buildGUI():
                     cVar.set(0)
      
                     #Change any defaults
-                    entryDict["minReward"]["var"].set(0)
-                    entryDict["maxReward"]["var"].set(0)
+                    entryDict["Minimum wheel revolutions for reward: "]["var"].set(0)
+                    entryDict["Maximum wheel revolutions for reward: "]["var"].set(0)
                    
             #On days 2 and 3 the number of wheel revolutions for a reward is constant
             if presetID >= 2 and presetID <= 3:
-                entryDict["minReward"]["var"].set(5)
-                entryDict["maxReward"]["var"].set(entryDict["minReward"]["var"].get()) 
+                entryDict["Minimum wheel revolutions for reward: "]["var"].set(5)
+                entryDict["Maximum wheel revolutions for reward: "]["var"].set(entryDict["Minimum wheel revolutions for reward: "]["var"].get()) 
                        
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
             else:
@@ -239,17 +240,18 @@ def buildGUI():
     default_font.configure(size=12)
     gui.option_add("*Font", default_font)
 
-    #Create set of entry boxes for entering in protocol                 
-    for a in range(len(entryList)):
-        label = Label(frameDict["entry"], text = labelList[a], anchor=W)
-        label.grid(column=0, row=a, sticky=W)
+    #Create set of entry boxes for entering in protocol
+    rowList = list(entryDict.keys())
+    for key, value in entryDict.items():
+        label = Label(frameDict["entry"], text = key, anchor=W)
+        label.grid(column=0, row=rowList.index(key), sticky=W)
         var = DoubleVar(frameDict["entry"])
         entry = Entry(frameDict["entry"], width=10, textvariable=var, justify=RIGHT, disabledforeground="BLACK", validate="focus", validatecommand=lambda: testEntry(False))
-        entry.grid(column=1, row=a, sticky=E, pady=10, padx=(0,5))
-        entryDict[entryList[a]] = {"label": label, "var": var, "entry": entry}
+        entry.grid(column=1, row=rowList.index(key), sticky=E, pady=10, padx=(0,5))
+        entryDict[key] = {"label": label, "var": var, "entry": entry}
     
     #Create pair of check box bars to select preset images for control and reward
-    row = a+1
+    row = rowList.index(key)+1
     controlImageLabel = Label(frameDict["check"], text = "Control images(s): ", anchor=W)
     controlImageLabel.grid(column=0, row=row, sticky=W, padx=(0,150))
     rewardImageLabel = Label(frameDict["check"], text = "Reward images(s): ", anchor=W)
@@ -326,19 +328,18 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
             if v == preset:
                 preset = k
         
-        return ("experiment preset: " + preset + "\n" +
-                "USB drive ID: " + driveName + "\n" + 
-                "control image set: " + re.sub("\'", "", str(controlList)) + "\n" +
-                "reward image set: " + re.sub("\'", "", str(rewardList)) + "\n" +
-                "minimum wheel revolution: " + str(entryDict["minReward"]["var"].get()) + "\n" +
-                "maximum wheel revolution: " + str(entryDict["maxReward"]["var"].get()) + "\n" +
-                "reward duration: " + str(entryDict["rewardDuration"]["var"].get()) + "\n" +
-                "wheel duration: " + str(entryDict["wheelDuration"]["var"].get()) + "\n" +
-                "reward frame period: " + str(entryDict["rewardPeriod"]["var"].get()) + "\n" +
-                "image frequency: " + str(entryDict["imageFreq"]["var"].get()) + "\n" +
-                "experiment duration: " + str(entryDict["experimentDuration"]["var"].get()) + "\n" +
-                "metadata: " + str(metadataBox.get("1.0", "end"))) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget 
-    
+        #Build prtocol string
+        protocolString = ("Experiment preset: " + preset + "\n" +
+                        "USB drive ID: " + driveName + "\n" + 
+                        "Control image set: " + re.sub("\'", "", str(controlList)) + "\r\n" +
+                        "Reward image set: " + re.sub("\'", "", str(rewardList)) + "\r\n")
+        for key, value in entryDict.items():
+            protocolString += key + str(value["var"].get()) + "\r\n"   
+        protocolString += "Metadata: " + str(metadataBox.get("1.0", "end")) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget 
+        
+        return protocolString
+
+                    
     def findUSB():
         nonlocal statusLabel
         nonlocal cageList
@@ -399,7 +400,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         
         imageDir = mountDir + "images/"
         for image in imageList:
-            imageFile = drawImage(image, entryDict["imageFreq"]["var"].get(), (0,0,0), (0,255,0))      
+            imageFile = drawImage(image, entryDict["Pattern frequency for images: "]["var"].get(), (0,0,0), (0,255,0))      
             try:
                 imageFile.save(imageDir + image, format="PNG")
             except:           
