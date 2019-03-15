@@ -44,7 +44,7 @@ pinPump = 29 #TTL output to pump trigger
 doorOpen = True #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
-syncDelay = 0.002 #Sleep delay between GPIO queries to reduce CPU load (s)
+syncDelay = 0.001 #Sleep delay between GPIO queries to reduce CPU load (s)
 
 #Protocol parsing functions and master dictionary
 def matchString(key, line, refString):        
