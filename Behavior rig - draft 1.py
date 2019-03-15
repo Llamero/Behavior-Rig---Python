@@ -19,6 +19,7 @@ import imp #Allows for modules to be imported into program
 import signal #Allows programs/processes to be terminated
 from datetime import datetime #Allows recording of current date and time
 import hashlib #Allows for calculating hashes of files for data verification
+import random #Select from list randomly
 
 #Setup variables
 devnull = open(os.devnull) #Send subprocess outputs to dummy temp file
@@ -30,15 +31,11 @@ terminal = None #Instance of the lxterminal process
 mountDir = "/mnt/usb/" #The directory the USB drive will be mounted to
 
 #Experiment variables
-controlArray = [] #List of non-reward images to be shown
-rewardArray = [] #Images that will trigger a reward event
-parameterDict = {"minimum wheel revolution:": None,"maximum wheel revolution:": None, "reward duration:": None, "wheel duration:": None, "reward frequency:": None, "image frequency:": None, "experiment duration:": None}
 imageDir = "/home/pi/exp_Images/" #Directory to transfer images to on the SD card
-expFile = "Protocol.txt" #Name of the protocol file to be used - must have .txt extension
-resultsFile = None #Name of active reuslts file
+protocolFile = "Protocol.txt" #Name of the protocol file to be used - must have .txt extension
+resultsFile = None #Name of active results file
 resultFileBase = "Results.txt" #Base file name for the results file - must have .txt extension
 imageExt = ".png" #File extension for valid protocol images
-expStart = None #Set epoch start time of experiment - i.e. time 0
 
 #GPIO variables
 pinWheel = 35 #TTL input from mouse wheel
@@ -47,7 +44,76 @@ pinPump = 29 #TTL output to pump trigger
 doorOpen = True #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
-syncDelay = 0.005 #Sleep delay between GPIO queries to reduce CPU load
+syncDelay = 0.002 #Sleep delay between GPIO queries to reduce CPU load (s)
+
+#Protocol parsing functions and master dictionary
+def matchString(key, line, refString):        
+    #Search for refernce string in line from protocol file
+    if refString in line:
+        lxprint(key + " reference \"" + refString + "\" matches protocol \"" + line + "\"...")
+        return line
+    else:
+        lxprint("ERROR in " + key + " reference \"" + refString + "\" does not match protocol \"" + line + "\"...")
+        return None
+
+def parseList(key, line, refArray):
+    refArray = []
+    
+    #Search for a list in the line string
+    listArray = [None] #Initialize the protocol list array
+    line = "".join(line.split()) #This removes all white space - split cuts on \r\n\t and " ", then join puts the remaining bits back into a string
+    listMatch = re.search("\[.*\]", line)
+    
+    #If there is a valid list string, parse the string
+    if listMatch: 
+        listString = listMatch.group(0)
+        listString = listString[1:-1] #Remove first and last character - "[ ]"
+        listArray = listString.split(",")
+    
+        if not (len(listArray) == 1 and listArray[0] == ""): #Parse images if array is not empty 
+            for i in listArray:
+                if not i.endswith(imageExt):
+                    lxprint("ERROR: Invalid extension in " + key[:-1] + ", \"" + i + "\" is not \"" + imageExt + "\"...")
+                    return None
+            
+            #If loop completes, then image list is valid
+            refArray = listArray    
+            
+        elif key == "Reward image set:":
+            refArray = []
+            lxprint("ERROR: No reward images found, there must be at least one reward image specified...")
+            return None
+        
+        else:
+            refArray = []
+            
+    lxprint(key[:-1] + " parsed: " + str(refArray))
+    return refArray
+
+def parseNum(key, line, refNum):
+    #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
+    numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
+    rx = re.compile(numeric_const_pattern, re.VERBOSE)
+    
+    listMatch = rx.search(line)
+    if listMatch:
+        number = float(listMatch.group(0))
+        if(number >= 0):
+            lxprint(key[:-1] + " parsed: " + str(number))
+            return number
+        else:
+            lxprint("ERROR: " + key + " \"" + str(parameterDict[key]) + "\" is less than 0 seconds.")
+            return None
+    else:
+        lxprint("ERROR: \"" + key[:-1] + "\" cannot be parsed...")
+        return None
+
+
+parameterDict = {"USB drive ID:": matchString, "Control image set:": parseList, "Reward image set:": parseList,
+                "Minimum wheel revolutions for reward:": parseNum,  "Maximum wheel revolutions for reward:": parseNum,
+                "Duration of pump \"on\" state (seconds):": parseNum, "Maximum time between wheel events (seconds):": parseNum, 
+                "Total duration of the experiment (hours):": parseNum, "Duration of each reward frame (seconds):": parseNum,
+                "Maximum duration of reward state (seconds):": parseNum}
 
 def hasher(file):
     HASH = hashlib.md5() #MD5 is used as it is faster, and this is not a cryptographic task
@@ -420,7 +486,7 @@ def checkForUSB():
                         if(retrieveExperiment(labelName)):
                             lxprint("SUCCESS!")
                             lxprint("Starting experiment...")
-##############################                            runExperiment()
+                            runExperiment()
                         else:
                             lxprint("FAILURE!")
                         input("Press enter...")
@@ -440,131 +506,55 @@ def checkForUSB():
 def retrieveExperiment(driveLabel):
     global mountDir
     global imageDir
-    global expFile
+    global protocolFile
     global resultsFile
     global resultsFileBase
-    global controlArray
-    global rewardArray
     global imageExt
     global parameterDict
-    
-    #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
-    numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
-    rx = re.compile(numeric_const_pattern, re.VERBOSE)
-    
-    def matchString(key, line):
-        nonlocal driveLabel
         
-        refString = None #The string to be tested against
-        if(key == "USB drive ID:"):
-            refString = driveLabel
-        
-        #Search for refernce string in line from protocol file
-        if refString in line:
-            lxprint(key + " reference \"" + driveLabel + "\" matches protocol \"" + line + "\"...")
-            return 1
-        else:
-            lxprint("ERROR in " + key + " reference \"" + driveLabel + "\" does not match protocol \"" + line + "\"...")
-            return 0
-
-    def parseList(key, line):
-        global controlArray
-        global rewardArray
-        global imageExt
-        
-        refArray = []
-        
-        #Search for a list in the line string
-        listArray = [None] #Initialize the protocol list array
-        line = "".join(line.split()) #This removes all white space - split cuts on \r\n\t and " ", then join puts the remaining bits back into a string
-        listMatch = re.search("\[.*\]", line)
-        
-        #If there is a valid list string, parse the string
-        if listMatch: 
-            listString = listMatch.group(0)
-            listString = listString[1:-1] #Remove first and last character - "[ ]"
-            listArray = listString.split(",")
-        
-        
-            if not (len(listArray) == 1 and listArray[0] == ""): #Parse images if array is not empty 
-                for i in listArray:
-                    if not i.endswith(imageExt):
-                        lxprint("ERROR: Invalid extension in " + key[:-1] + ", \"" + i + "\" is not \"" + imageExt + "\"...")
-                        return 0
-                
-                #If loop completes, then image list is valid
-                refArray = listArray    
-                lxprint(key[:-1] + " parsed: " + str(refArray))
-                
-            elif key == "reward image set:":
-                refArray = []
-                lxprint("ERROR: No reward images found, there must be at least one reward image specified...")
-                return 0
-            
-            else:
-                refArray = []
-                lxprint(key[:-1] + " parsed: " + str(refArray))
-
-        if (key == "control image set:"):
-            controlArray = refArray
-        elif (key == "reward image set:"):
-            rewardArray = refArray
-        return 1
-    
-    def parseNum(key, line):
-        global parameterDict
-        nonlocal rx
-        
-        listMatch = rx.search(line)
-        if listMatch:
-            parameterDict[key] = float(listMatch.group(0))
-            if(parameterDict[key] >= 0):
-                lxprint(key[:-1] + " parsed: " + str(parameterDict[key]))
-                return 1
-            else:
-                lxprint("ERROR: " + key + " \"" + str(parameterDict[key]) + "\" is less than 0 seconds.")
-                return 0
-        else:
-            lxprint("ERROR: \"" + key[:-1] + "\" cannot be parsed...")
-            
-    
-    
-    f = Path(mountDir + expFile)
+    f = Path(mountDir + protocolFile)
     #Extract experiment protocol and make sure it is valid
     lines = None #Export of protocol to RAM so it can be added as a header to the results file
-    protocolSearchDict = {"USB drive ID:": matchString, "control image set:": parseList, "reward image set:": parseList, "minimum wheel revolution:": parseNum,"maximum wheel revolution:": parseNum, "reward duration:": parseNum, "wheel duration:": parseNum, "reward frequency:": parseNum, "image frequency:": parseNum, "experiment duration:": parseNum} 
     if f.is_file():
         #Append date to protocol file to flag it as being used and prevent accidental reuse
-        protocolHash = hasher(mountDir + expFile)
-        newExpFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", expFile)
-#        os.rename(mountDir + expFile, mountDir + newExpFile)
-        newExpFile = expFile
+        protocolHash = hasher(mountDir + protocolFile)
+        newProtocolFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", protocolFile)
+##################################        os.rename(mountDir + protocolFile, mountDir + newProtocolFile)
+        newProtocolFile = protocolFile
         
         #Parse the protocol file
-        with open(mountDir + newExpFile, "r") as exp:
+        ref = None #Ref variable to be passed to parsing functions if needed
+        with open(mountDir + newProtocolFile, "r") as exp:
             lines = exp.readlines()
             exp.seek(0) #Return back to the start of the file
             for line in exp:               
-                for key, func in protocolSearchDict.items():
+                for key, func in parameterDict.items():
                      if(line.startswith(key)):
-                        protocolSearchDict[key] = func(key, line.split(key, 1)[1].strip()) #Send key and data afer ":" with leading and trailing whitespace removed
+                        if "USB drive ID:" in key:
+                            ref = driveLabel
+                        else:
+                            ref = None
+                        parameterDict[key] = func(key, line.split(key, 1)[1].strip(), ref) #Send key and data afer ":" with leading and trailing whitespace removed
 
         #Check dict and flag missing components
         nValid = 0
-        for key, value in protocolSearchDict.items():
-            if type(value) is int:
-                nValid += value
-            else:
+        for key, value in parameterDict.items():
+            if callable(value): #If value is still function = line not found
                 lxprint("Cannot find: \"" + key + "\" in protocol file...")
-        lxprint(str(nValid) + " of " + str(len(protocolSearchDict)) + " lines parsed...")        
+            elif value is None:
+                pass
+            else:
+                nValid += 1
+                
+        lxprint(str(nValid) + " of " + str(len(parameterDict)) + " lines parsed...")        
         
         
         #If all components parsed successfully, check that all images are available 
-        if nValid == len(protocolSearchDict): #If all elements passed parsing
+        if nValid == len(parameterDict): #If all elements passed parsing
 
             #Verify that all images in the protocol are included in the file directory
             
-            imageSet = list(set(controlArray + rewardArray)) #Create a list of all unique images in the protocol using "set"
+            imageSet = list(set(parameterDict["Control image set:"] + parameterDict["Reward image set:"])) #Create a list of all unique images in the protocol using "set"
             lxprint("Transferring images to SD card...")
             subprocess.call("sudo mkdir -p " + imageDir, shell=True) #Create directory to which to transfer images if it doesn't exist
             for i in imageSet:
@@ -586,50 +576,65 @@ def retrieveExperiment(driveLabel):
                 #Add file hashes
                 f.write("Protocol hash: " + protocolHash + "\r\n")
                 f.write("Image hashes: \r\n")
-                for i in sorted(set(controlArray + rewardArray)):
+                for i in sorted(set(parameterDict["Control image set:"] + parameterDict["Reward image set:"])):
                     f.write(i + " - " + hasher(imageDir + i) + "\r\n")
                 f.write("\r\n-------------------------------Start of experiment-----------------------------------------------\r\n\r\n")
             return True
         
     else:
-        lxprint("ERROR: \"" + expFile + "\" not found on USB drive.")
+        lxprint("ERROR: \"" + protocolFile + "\" not found on USB drive.")
     
     return False
 
 
 #---------------------------------Run experiment-----------------------------------------------------------------------------------------------------------------------------------------------
-def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
+def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
     global imageDir
-    global displayTime
-    global expStart
-    global timeArray
-    global imageArray
-    global rewardArray
-    global wheelTrigger
     global syncDelay
+    global parameterDict
     
-    def sendLog(dir, image):
+    rewardDuration = parameterDict["Maximum duration of reward state (seconds):"]
+    rewardFramePeriod = parameterDict["Duration of each reward frame (seconds):"]
+      
+    def sendLog(image):
+        global imageDir
         #Send image data to log
-        #HASH = ", Hash: " + hasher(dir + image) #Get image hash - computing hash takes 2 ms
-        HASH = ""
-        timer = time.time() - expStart #Get epxeriment time
-        connLog.send("Image - Name: " + image + HASH + ", Time: " + str(time.time() - expStart))
-        return 1
+        HASH = str(hasher(imageDir + image)) #Get image hash - computing hash takes 2 ms
+        timer = time.time() - expStart #Get experiment time
+        connLog.send("Image - Name: " + image + ", Hash: " + HASH + ", Time: " + str(time.time() - expStart))
+        return
     
     def displayImage(i):
-        windowSurfaceObj.blit(i,(0,0))
+        nonlocal pictureDict
+        windowSurfaceObj.blit(pictureDict[i],(0,0))
         pygame.display.update()
-        return False
+        sendLog(i)
+        return
     
-    def preloadImages(dir, array):
+    def preloadImages(array):
+        global imageDir
         subset = set(array) #Create list of all unique entries
         pictures = {}
         for i in subset:
-            pictures[i] = pygame.image.load(dir + i)
+            pictures[i] = pygame.image.load(imageDir + i)
         return pictures
         
-    connLog.send("Image starting")
-    
+    def changeToControl():
+        nonlocal wheelPipe
+        nonlocal pictureDict
+        global parameterDict
+        nonlocal rewardIndex
+        
+        wheelPipe.send(1) #Tell wheel process that reward state ended
+        if parameterDict["Control image set:"]: #If the control array is not empty, switch to a randomly selected control image
+            displayImage(random.choice(parameterDict["Control image set:"]))
+        else:
+            displayImage(random.choice(parameterDict["Reward image set:"])) #If no control images are available, show a reward image
+        rewardIndex = 0 #Reset the reward frame index
+        return False
+        
+    connLog.send("Image starting at: " + str(time.time()-expStart))
+   
     #Exit program on any key press
     run = True
         
@@ -642,47 +647,73 @@ def imageProcess(connLog, stopQueue, rewardActive, wheelActive):
     pygame.mouse.set_visible(False)
     
     #Preload images to RAM
-    pictures = preloadImages(imageDir, imageArray)
-    
+    pictureDict = preloadImages((parameterDict["Control image set:"] + parameterDict["Reward image set:"]))
+
     #initialize varible for tracking image list index
     imageIndex = 0
     
-    #Start image display timer
-    stopTime = time.time()
+    #Record experiemnt end time
+    expEnd = time.time() 
     
-    for t in timeArray:
-        imageOff = True
-        rewardImage = False
-        stopTime += t #update next image display time
+    #Initialize state variabes
+    wheelState = 0
+    doorState = 0
+    rewardState = False
+    
+    #Calculate experiment end time:
+    currentTime = time.time()
+    expEnd = 60*60*parameterDict["Total duration of the experiment (hours):"] + currentTime
+    rewardEnd = currentTime #Track when a reward state times out
+    frameEnd = currentTime #Track when a reward frame times out
+    rewardIndex = 0 #Index of current reward frame
+    
+    changeToControl() #Initialize to a control image 
+    
+    while run and expEnd > currentTime:
+        time.sleep(syncDelay)
         
-        #Check if image is reward image
-        if(imageArray[imageIndex] in rewardArray):
-            rewardImage = True
-        else:
-            imageOff = displayImage(pictures[imageArray[imageIndex]])
-            rewardActive.value = sendLog(imageDir, imageArray[imageIndex]) - 1
-                                                
-        #Wait specified delay time, checking for keypress event      
-        while time.time() < stopTime:
-            time.sleep(syncDelay)
-            #Display image
-            if imageOff and rewardImage and (wheelActive.value == 1 or not wheelTrigger):
-                imageOff = displayImage(pictures[imageArray[imageIndex]])
-                rewardActive.value = sendLog(imageDir, imageArray[imageIndex])
+        #Record time for current cycle
+        currentTime = time.time()
+        
+        #Poll for state changes
+        if rewardState: #If in reward state monitor door for trigger to control state
+            if doorPipe.poll(): #Check if wheel state has changed
+                doorState = doorPipe.recv()
+                rewardState = changeToControl()
+            else:
+                doorState = False
+        
+        else: #If in control state, monitor wheel
+            if wheelPipe.poll(): #Check if wheel state has changed
+                wheelState = wheelPipe.recv()
+                doorPipe.send(1) #Tell door process that wheel has triggered a reward event
+                rewardState = True
+                rewardEnd = currentTime + rewardDuration #start reward timers
+            else:
+                wheelState = False
+        
+        if rewardState:
+            if rewardEnd > currentTime: #Check that reward state has not timed out
+                if frameEnd < currentTime: #If frame has expired move to next reward frame
+                    displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
+                    rewardIndex += 1 #Increment reward index
             
-            #Check for keypress event if availalbe
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN:
-                    lxprint("Key press")
-                    run = False
-            #If keypress, exit run loop
-            if not run:
-                break
+            else: #If reward state has timed out, cancel reward state
+                rewardState = changeToControl()
+                    
+        #Check for keypress event if available
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                lxprint("Key press")
+                run = False
         
-        imageIndex += 1
+        #If keypress, exit run loop
+        if not run:
+            break
         
+    #Flag other processes to stop
     stopQueue.value = 1    
-    lxprint("GUI stop")
+    lxprint("Image stop at: " + str(datetime.now()))
 
 def logProcess(connGPIO, connWheel, connImage, stopQueue):
     global mountDir
@@ -693,20 +724,21 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
     connArray.append(connWheel)
     connArray.append(connImage)
     
-    f = open(mountDir + resultsFile, "a") #Create text file to store results
+    #f = open(mountDir + resultsFile, "a") #Append log to results file
     run = True
     while run:
         time.sleep(syncDelay)
         #If a data entry is available in the queue, process it
         #multiprocessing.connection.wait
         for r in wait(connArray, timeout=0.1):
-            try:
-                data = r.recv()
-            except EOFError:
-                lxprint("Error reading from pipe: " + str(r))
-                f.write("Error reading from pipe: " + str(r) + "\r\n")
-            else:
-                f.write(str(data) + "\r\n")
+            with open(mountDir + resultsFile, "a") as f: #Use with in loop so that data is continuously saved to drive preventing data loss in the event of a device failure
+                try:
+                    data = r.recv()
+                except EOFError:
+                    lxprint("Error reading from pipe: " + str(r))
+                    f.write("Error reading from pipe: " + str(r) + "\r\n")
+                else:
+                    f.write(str(data) + "\r\n")
                 
         #Stop process on stop command from GUI process
         if stopQueue.value == 1:
@@ -714,35 +746,47 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
             
     #Perform last check of pipes to make sure all data has been gathered
     for r in wait(connArray, timeout=1):
-        try:
-            data = r.recv()
-        except EOFError:
-            print ("Error reading from pipe: " + str(r))
-            f.write("Error reading from pipe: " + str(r) + "\r\n")
-        else:
-            f.write(str(data) + "\r\n")
+        with open(mountDir + resultsFile, "a") as f:
+            try:
+                data = r.recv()
+            except EOFError:
+                print ("Error reading from pipe: " + str(r))
+                f.write("Error reading from pipe: " + str(r) + "\r\n")
+            else:
+                f.write(str(data) + "\r\n")
             
-    lxprint("Log stop")
+    lxprint("Log stop at: " + str(datetime.now()))
 
-def GPIOprocess(pin, connLog, stopQueue, stateFlag):
+def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
     global pinDoor
     global pinWheel
     global pinPump
     global wheelBounce
     global doorBounce
-    global GPIOstring
-    global wheelInterval
-    global rewardDuration
     global doorOpen
-    global syncDelay
+    global syncDelay 
+    global parameterDict
 
-    run = True
-    header = '' #Device string
+    #Retrieve protocol parameters
+    wheelInterval = parameterDict["Maximum time between wheel events (seconds):"]
+    minRev = parameterDict["Minimum wheel revolutions for reward:"]
+    maxRev = parameterDict["Maximum wheel revolutions for reward:"]
+    pumpDuration = parameterDict["Duration of pump \"on\" state (seconds):"]
+    delay = 0 #Debounce delay
+    
+    #Set state flags
+    wheelCount = 0 #Number of wheel revolutions
+    wheelEnd = 0 #Timeout for wheel
+    pumpEnd = 0 #Timeout for pump
+    runState = False #Whether to send data to the image process or to only log events
     pinState = False #Previous state of GPIO pin at last state change
     newState = False #Current state of GPIO pin
+    run = True  
+    
+    #Set output strings
+    header = '' #Device string
     stateStr = '' #High/low string
     stopString = '' #String to print when process stops
-    delay = 0
     
     try:
         #Setup GPIO pin with pull-up resistor, and detection interrupts for both rising and falling events  
@@ -751,123 +795,146 @@ def GPIOprocess(pin, connLog, stopQueue, stateFlag):
         if pin == pinWheel:    
             header = "Wheel - "
             delay = wheelBounce/1000
-            stopString = "Wheel stop"
-            eventTime = wheelInterval
+            stopString = "Wheel stop at: "
+            runState = True #Initialize assuming control state
+            connLog.send("Wheel starting at: " + str(time.time()-expStart))
             
         #Otherwise, log all other door events, and activate pump output
         else:        
             header = "Door - "
             delay = doorBounce/1000
-            stopString = "Door stop"
-            eventTime = rewardDuration
+            stopString = "Door stop at: "
             GPIO.setup(pinPump, GPIO.OUT)
+            GPIO.output(pinPump, GPIO.LOW) #Initialize with pump low
+            runState = False #Initialize assuming control state
+            connLog.send("Door starting at: " + str(time.time()-expStart))
         
         #Poll GPIO pin and send events to log when state changes
         pinState = GPIO.input(pin)
-        eventStop = time.time() #Track when the wheel flag goes false after last wheel event
         pumpOn = False
+        currentTime = time.time()
+        
         while run:
             time.sleep(syncDelay)
-            #If reward image is active, reset the reward duration timer
-            if(pin == pinDoor):
-                if(stateFlag.value == 1):
-                    eventStop = time.time() + eventTime
+            currenTime = time.time()
+            
+            #see if there is a state flag from the image process
+            if imagePipe.poll():
+                runState = imagePipe.recv()
+                wheelCount = 0 #Reset wheel count
+                wheelEnd = currentTime
+            
+            #Toggle pump on if state is active and door is open
+            if(pin == pinDoor and runState):
                 #If door is open and reward is active, turn on pump
-                if(eventStop > time.time() and pinState == doorOpen and not pumpOn):
+                if(pinState == doorOpen and not pumpOn):
                     GPIO.output(pinPump, GPIO.HIGH)
                     pumpOn = True
-                    connLog.send("Pump - State: On, Time: " + str(time.time() - expStart))
-                elif(pinState != doorOpen and pumpOn):
-                    GPIO.output(pinPump, GPIO.LOW) #Otherwise turn pump off when door is closed
+                    connLog.send("Pump - State: On, Time: " + str(currentTime - expStart))
+                    pumpEnd = currentTime + pumpDuration
+                elif(currentTime > pumpEnd and pumpOn): #Otherwise turn pump off when pump times out
+                    GPIO.output(pinPump, GPIO.LOW) 
                     pumpOn = False
-                    connLog.send("Pump - State: Off, Time: " + str(time.time() - expStart))
-            
-            #Otherwise, update wheel state flag
-            else:
-                if(eventStop > time.time() and stateFlag.value == 0):
-                    stateFlag.value = 1
-                elif(eventStop <= time.time() and stateFlag.value == 1):
-                    stateFlag.value = 0
-                
-                    
+                    connLog.send("Pump - State: Off, Time: " + str(currentTime - expStart))
+                    imagePipe.send(1) #Tell image process reward state is over
+                    runState = False
+
             #If GPIO state changes, log event
             newState = GPIO.input(pin)      
             if (newState ^ pinState):
-                timer = str(time.time() - expStart) #Get event time
+                timer = str(currentTime - expStart) #Get event time
                 pinState = newState #Update current state
                 
                 if pinState:
                     stateStr = "State: High, Time: "
+                    if wheelEnd > currentTime: #If wheel event happens before timeout, add event to counter
+                        wheelCount += 1
+                    else: #If event happens after timeout, reset counter
+                        wheelCount = 1
+                    wheelEnd = currentTime + wheelInterval #Update timeout timer
                 else:
                     stateStr = "State: Low, Time: "
-                
-                #Reset wheel active timer
-                if(pin == pinWheel):
-                    eventStop = time.time() + wheelInterval
       
                 connLog.send(header + stateStr + timer) 
                 
                 #Debounce delay
                 time.sleep(delay)
-#                lxprint(header + str(stateFlag.value))
                 
             #Stop process on stop command from GUI process
             if stopQueue.value == 1:
                 run = False
     except:
         lxprint("GPIO Error!")
+
     finally:
         GPIO.cleanup()
-        lxprint(stopString)
+        lxprint(stopString + str(datetime.now()))
 
 def runExperiment():
-    global expStart
+    global mountDir
+    global resultsFile
     pygame.init()
 
     #Global Variables 
     GPIO.setmode(GPIO.BOARD) #Sets GPIO pin numbering convention
+    #GPIO.setwarnings(False) #Suppress runtime cleanup warnings
     
-    GPIOrec, GPIOsend = Pipe() #Setup a duplex line of communication for processes to send data to log process
-    imageRec, imageSend = Pipe()
-    wheelRec, wheelSend = Pipe()
+    #Initialize pipe dictionary
+    pipeDict = {"door_to_log_rec": None, "door_to_log_send": None, "image_to_log_rec": None, "image_to_log_send": None, "wheel_to_log_rec": None, "wheel_to_log_send":None, "door_to_image_duplex": None, "image_to_door_duplex": None, "wheel_to_image_duplex": None, "image_to_wheel_duplex": None} 
+    
+    pipeDict["door_to_log_rec"], pipeDict["door_to_log_send"] = Pipe(False) #Setup a unidirectional (duplex = False) line of communication for processes to send data to log process
+    pipeDict["image_to_log_rec"], pipeDict["image_to_log_send"] = Pipe(False)
+    pipeDict["wheel_to_log_rec"], pipeDict["wheel_to_log_send"] = Pipe(False)
+    
+    pipeDict["door_to_image_duplex"], pipeDict["image_to_door_duplex"] = Pipe() #Setup a duplex line of communication for coordinating rewards
+    pipeDict["wheel_to_image_duplex"], pipeDict["image_to_wheel_duplex"] = Pipe()
     stopQueue = Value('i', 0) #Setup a shared variable to allow a keypress to flag all processes to stop
-    rewardActive = Value('i', 0) #Setup a shared variable to flag that a reward event is active
-    wheelActive = Value('i', 0) #Setup a shared variable to flag that a wheel event is active
+
     #NOTE: A pipe can only connect two processes while a queue can connect multiple processes
     #Also, a pipe is much faster than a queue.  A SimpleQueue has a simplified instruction set
     
     #Initialize Image, GPIO and logging sub processes
-    pLog = Process(target = logProcess, args=(GPIOrec, wheelRec, imageRec, stopQueue))
-    pGPIO = Process(target = GPIOprocess, args=(pinDoor, GPIOsend, stopQueue, rewardActive))
-    pWheel = Process(target = GPIOprocess, args=(pinWheel, wheelSend, stopQueue, wheelActive))
+    expStart = time.time() #Record start time for experiment
+    pLog = Process(target = logProcess, args=(pipeDict["door_to_log_rec"], pipeDict["image_to_log_rec"], pipeDict["wheel_to_log_rec"], stopQueue))
+    pDoor = Process(target = GPIOprocess, args=(pinDoor, pipeDict["door_to_log_send"], stopQueue, pipeDict["door_to_image_duplex"], expStart))
+    pWheel = Process(target = GPIOprocess, args=(pinWheel, pipeDict["wheel_to_log_send"], stopQueue, pipeDict["wheel_to_image_duplex"], expStart))
     
     try:  
-        lxprint("Starting")
-        expStart = time.time() #Record the start time of the experiemnt
+        lxprint("Experiment start at: " + str(datetime.now()))
         pLog.start() #Start subprocesses before continuing with main thread, otherwise main thread will be too busy to start subprocesses
-        pGPIO.start()
+        pDoor.start()
         pWheel.start()
-        imageProcess(imageSend, stopQueue, rewardActive, wheelActive) #PyGame does not support multi-processing, so it must stay in the main thread
+        imageProcess(pipeDict["image_to_log_send"], stopQueue, pipeDict["image_to_door_duplex"], pipeDict["image_to_wheel_duplex"], expStart) #PyGame does not support multi-processing, so it must stay in the main thread
         pLog.terminate()
-        pGPIO.terminate()
+        pDoor.terminate()
         pWheel.terminate()
         pLog.join() #Verify that all subprocesses are successfully terminated
-        pGPIO.join()
+        pDoor.join()
         pWheel.join()
         
       
     except KeyboardInterrupt:
         pLog.terminate()
-        pGPIO.terminate()
+        pDoor.terminate()
         pWheel.terminate()
         pLog.join() #Verify that all subprocesses are successfully terminated
-        pGPIO.join()
+        pDoor.join()
         pWheel.join()
+    
+    finally: #Cleanup on exit
+        with open(mountDir + resultsFile, "a") as f: #Append stop time to results file
+            f.write("Successful termination at: " + str(time.time()-expStart) + "\r\n")
+        for key, value in pipeDict.items(): #Close all active pipes
+            value.close()
         
-    pygame.quit()
-        #    GPIO.cleanup()       # clean up GPIO on CTRL+C exit  
-    #GPIO.cleanup()           # clean up GPIO on normal exit
-    lxprint("End.")
+        pygame.quit() #close pygame
+        
+        try: #Clear out GPIO library if still active
+            GPIO.cleanup()
+        except:
+            pass
+            
+        lxprint("Experiment end at: " + str(datetime.now()))
 
 #---------------------------------Initialize-----------------------------------------------------------------------------------------------------------------------------------------------
 
