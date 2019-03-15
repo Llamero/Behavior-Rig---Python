@@ -46,7 +46,29 @@ wheelBounce = 1 #Bounce time between events in which to ignore subsequent events
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 syncDelay = 0.001 #Sleep delay between GPIO queries to reduce CPU load (s)
 
-#Protocol parsing functions and master dictionary
+#Protocol parameter master dictionary (see retrieveExperiment(driveLabel) for initialization with parsing functions)
+parameterDict = {"USB drive ID:": None, "Control image set:": None, "Reward image set:": None,
+                "Minimum wheel revolutions for reward:": None,  "Maximum wheel revolutions for reward:": None,
+                "Duration of pump \"on\" state (seconds):": None, "Maximum time between wheel events (seconds):": None, 
+                "Total duration of the experiment (hours):": None, "Duration of each reward frame (seconds):": None,
+                "Maximum duration of reward state (seconds):": None}
+
+def hasher(file):
+    HASH = hashlib.md5() #MD5 is used as it is faster, and this is not a cryptographic task
+    with open(file, "rb") as f: 
+        while True:
+            block = f.read(65536) #64 kB buffer for hashing
+            if not block: #If block is empty (b'' = False), exit the while loop
+                break
+            HASH.update(block)
+    return HASH.hexdigest()
+
+def lxprint(a): #Status display
+    global PIPE_PATH
+    with open(PIPE_PATH, "a") as p:
+        p.write(a + "\r\n")
+
+#Protocol parsing functions
 def matchString(key, line, refString):        
     #Search for refernce string in line from protocol file
     if refString in line:
@@ -108,27 +130,6 @@ def parseNum(key, line, refNum):
         lxprint("ERROR: \"" + key[:-1] + "\" cannot be parsed...")
         return None
 
-
-parameterDict = {"USB drive ID:": matchString, "Control image set:": parseList, "Reward image set:": parseList,
-                "Minimum wheel revolutions for reward:": parseNum,  "Maximum wheel revolutions for reward:": parseNum,
-                "Duration of pump \"on\" state (seconds):": parseNum, "Maximum time between wheel events (seconds):": parseNum, 
-                "Total duration of the experiment (hours):": parseNum, "Duration of each reward frame (seconds):": parseNum,
-                "Maximum duration of reward state (seconds):": parseNum}
-
-def hasher(file):
-    HASH = hashlib.md5() #MD5 is used as it is faster, and this is not a cryptographic task
-    with open(file, "rb") as f: 
-        while True:
-            block = f.read(65536) #64 kB buffer for hashing
-            if not block: #If block is empty (b'' = False), exit the while loop
-                break
-            HASH.update(block)
-    return HASH.hexdigest()
-
-def lxprint(a):
-    global PIPE_PATH
-    with open(PIPE_PATH, "a") as p:
-        p.write(a + "\r\n")
 #----------------------------Raspberry Pi Config--------------------------------------------------------------------------------------------------------------------
 def import_package(p):
     global devnull
@@ -511,6 +512,13 @@ def retrieveExperiment(driveLabel):
     global resultsFileBase
     global imageExt
     global parameterDict
+    
+    #Re-initialize the parameter dictionary with the appropriate parsing functions
+    parameterDict = {"USB drive ID:": matchString, "Control image set:": parseList, "Reward image set:": parseList,
+                "Minimum wheel revolutions for reward:": parseNum,  "Maximum wheel revolutions for reward:": parseNum,
+                "Duration of pump \"on\" state (seconds):": parseNum, "Maximum time between wheel events (seconds):": parseNum, 
+                "Total duration of the experiment (hours):": parseNum, "Duration of each reward frame (seconds):": parseNum,
+                "Maximum duration of reward state (seconds):": parseNum}
         
     f = Path(mountDir + protocolFile)
     #Extract experiment protocol and make sure it is valid
