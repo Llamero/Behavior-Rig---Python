@@ -159,6 +159,7 @@ def buildGUI():
             entryDict["Minimum wheel revolutions for reward: "]["var"].set(2)
             entryDict["Maximum wheel revolutions for reward: "]["var"].set(20)
             entryDict["Maximum duration of reward state (seconds): "]["var"].set(10)
+            entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(3)
             entryDict["Maximum time between wheel events (seconds): "]["var"].set(10)
             entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
             entryDict["Pattern frequency for images: "]["var"].set(8)
@@ -331,10 +332,10 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         #Build prtocol string
         protocolString = ("Experiment preset: " + preset + "\n" +
                         "USB drive ID: " + driveName + "\n" + 
-                        "Control image set: " + re.sub("\'", "", str(controlList)) + "\r\n" +
-                        "Reward image set: " + re.sub("\'", "", str(rewardList)) + "\r\n")
+                        "Control image set: " + re.sub("\'", "", str(controlList)) + "\n" +
+                        "Reward image set: " + re.sub("\'", "", str(rewardList)) + "\n")
         for key, value in entryDict.items():
-            protocolString += key + str(value["var"].get()) + "\r\n"   
+            protocolString += key + str(value["var"].get()) + "\n"   
         protocolString += "Metadata: " + str(metadataBox.get("1.0", "end")) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget 
         
         return protocolString
