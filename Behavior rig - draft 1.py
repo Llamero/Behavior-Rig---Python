@@ -38,10 +38,10 @@ resultFileBase = "Results.txt" #Base file name for the results file - must have 
 imageExt = ".png" #File extension for valid protocol images
 
 #GPIO variables
-pinWheel = 35 #TTL input from mouse wheel
-pinDoor = 37 #TTL input from mouse door to reward
-pinPump = 29 #TTL output to pump trigger
-doorOpen = True #Pin state when door is open
+pinWheel = 11 #TTL input from mouse wheel
+pinDoor = 13 #TTL input from mouse door to reward
+pinPump = 22 #TTL output to pump trigger
+doorOpen = False #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 syncDelay = 0.001 #Sleep delay between GPIO queries to reduce CPU load (s)
@@ -601,7 +601,6 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
     global syncDelay
     global parameterDict
     
-    rewardDuration = parameterDict["Maximum duration of reward state (seconds):"]
     rewardFramePeriod = parameterDict["Duration of each reward frame (seconds):"]
       
     def sendLog(image):
@@ -648,8 +647,8 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
         
     #Get the current reslution of the monitor
     displayObj = pygame.display.Info()
-    windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h), pygame.FULLSCREEN)
-    #windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h))
+    #windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h), pygame.FULLSCREEN)
+    windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h))
     
     #Hide mouse cursor
     pygame.mouse.set_visible(False)
@@ -671,7 +670,6 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
     #Calculate experiment end time:
     currentTime = time.time()
     expEnd = 60*60*parameterDict["Total duration of the experiment (hours):"] + currentTime
-    rewardEnd = currentTime #Track when a reward state times out
     frameEnd = currentTime #Track when a reward frame times out
     rewardIndex = 0 #Index of current reward frame
     
@@ -696,18 +694,14 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
                 wheelState = wheelPipe.recv()
                 doorPipe.send(1) #Tell door process that wheel has triggered a reward event
                 rewardState = True
-                rewardEnd = currentTime + rewardDuration #start reward timers
             else:
                 wheelState = False
         
         if rewardState:
-            if rewardEnd > currentTime: #Check that reward state has not timed out
-                if frameEnd < currentTime: #If frame has expired move to next reward frame
-                    displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
-                    rewardIndex += 1 #Increment reward index
-            
-            else: #If reward state has timed out, cancel reward state
-                rewardState = changeToControl()
+            if frameEnd < currentTime: #If frame has expired move to next reward frame
+                displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
+                rewardIndex += 1 #Increment reward index
+                frameEnd = currentTime + rewardFramePeriod #Reset frame timer
                     
         #Check for keypress event if available
         for event in pygame.event.get():
@@ -731,8 +725,9 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
     connArray.append(connGPIO)
     connArray.append(connWheel)
     connArray.append(connImage)
+##########################Debug tail - shows results file in real time    
+    terminal = subprocess.Popen(["lxterminal -e tail --follow \"" + (mountDir + resultsFile) + "\""], shell=True, stdout=devnull, stderr=devnull)
     
-    #f = open(mountDir + resultsFile, "a") #Append log to results file
     run = True
     while run:
         time.sleep(syncDelay)
@@ -780,15 +775,19 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
     minRev = parameterDict["Minimum wheel revolutions for reward:"]
     maxRev = parameterDict["Maximum wheel revolutions for reward:"]
     pumpDuration = parameterDict["Duration of pump \"on\" state (seconds):"]
+    rewardDuration = parameterDict["Maximum duration of reward state (seconds):"]
     delay = 0 #Debounce delay
-    
+
     #Set state flags
     wheelCount = 0 #Number of wheel revolutions
-    wheelEnd = 0 #Timeout for wheel
-    pumpEnd = 0 #Timeout for pump
+    rewardRev = 0 #Number of revolutions needed to trigger a reward event
+    currentTime = time.time() #Tracker of current time point
+    wheelEnd = currentTime #Timeout for wheel
+    rewardEnd = currentTime #Track when a reward state times out
     runState = False #Whether to send data to the image process or to only log events
     pinState = False #Previous state of GPIO pin at last state change
     newState = False #Current state of GPIO pin
+    stateChange = False #Single loop cycle flag if an state has changed and has not yet been handled
     run = True  
     
     #Set output strings
@@ -805,6 +804,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
             delay = wheelBounce/1000
             stopString = "Wheel stop at: "
             runState = True #Initialize assuming control state
+            rewardRev = random.randint(minRev, maxRev)
             connLog.send("Wheel starting at: " + str(time.time()-expStart))
             
         #Otherwise, log all other door events, and activate pump output
@@ -824,32 +824,51 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
         
         while run:
             time.sleep(syncDelay)
-            currenTime = time.time()
+            currentTime = time.time()
             
             #see if there is a state flag from the image process
             if imagePipe.poll():
-                runState = imagePipe.recv()
+                runState = imagePipe.recv() #Activate run state
                 wheelCount = 0 #Reset wheel count
-                wheelEnd = currentTime
+                wheelEnd = currentTime #Reset wheel timeout timer
+                rewardEnd = currentTime + rewardDuration #start reward timers
             
-            #Toggle pump on if state is active and door is open
-            if(pin == pinDoor and runState):
-                #If door is open and reward is active, turn on pump
-                if(pinState == doorOpen and not pumpOn):
-                    GPIO.output(pinPump, GPIO.HIGH)
-                    pumpOn = True
-                    connLog.send("Pump - State: On, Time: " + str(currentTime - expStart))
-                    pumpEnd = currentTime + pumpDuration
-                elif(currentTime > pumpEnd and pumpOn): #Otherwise turn pump off when pump times out
-                    GPIO.output(pinPump, GPIO.LOW) 
-                    pumpOn = False
-                    connLog.send("Pump - State: Off, Time: " + str(currentTime - expStart))
-                    imagePipe.send(1) #Tell image process reward state is over
-                    runState = False
+            #Take action if state is active and new state change occured
+            if(runState and stateChange):
+                stateChange = False #Clear the stateChange flag
+                
+                #Door trigger pump events
+                if(pin == pinDoor):
+                    #If door is open and reward is active, turn on pump
+                    if(pinState == doorOpen and not pumpOn):
+                        GPIO.output(pinPump, GPIO.HIGH)
+                        pumpOn = True
+                        connLog.send("Pump - State: On, Time: " + str(currentTime - expStart))
+                        rewardEnd = currentTime + pumpDuration #Set reward to end at end of pump cycle - this will extend reward or shorten time to match pump on time
+                
+                #Otherwise check if wheel has triggered a reward event
+                else:
+                    if(pinState):
+                        connLog.send("Wheel revolution " + str(wheelCount) + " of " + str(rewardRev))
+                    if(wheelCount == rewardRev):
+                        imagePipe.send(1) #Tell image process that reward event has been triggered
+                        runState = False
+            
+            #At end of reward event, turn pump off and flag image process
+            if(pin == pinDoor):
+                if(runState): 
+                    if(rewardEnd < currentTime):
+                        if pumpOn:
+                            GPIO.output(pinPump, GPIO.LOW)
+                            pumpOn = False
+                            connLog.send("Pump - State: Off, Time: " + str(currentTime - expStart))
+                        imagePipe.send(1) #Tell image process reward state is over
+                        runState = False
 
             #If GPIO state changes, log event
             newState = GPIO.input(pin)      
             if (newState ^ pinState):
+                stateChange = True
                 timer = str(currentTime - expStart) #Get event time
                 pinState = newState #Update current state
                 
@@ -859,6 +878,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
                         wheelCount += 1
                     else: #If event happens after timeout, reset counter
                         wheelCount = 1
+                        rewardRev = random.randint(minRev, maxRev) #Reset reward revolution counter
                     wheelEnd = currentTime + wheelInterval #Update timeout timer
                 else:
                     stateStr = "State: Low, Time: "
