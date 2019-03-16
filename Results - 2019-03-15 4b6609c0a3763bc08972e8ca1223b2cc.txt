@@ -1,0 +1,218 @@
+Date: 2019-03-15 23:20:33.649730
+Experiment preset: Custom
+USB drive ID: CAGE 1A
+Control image set: [Solid.png]
+Reward image set: [Checkerboard.png]
+Minimum wheel revolutions for reward: 2.0
+Maximum wheel revolutions for reward: 20.0
+Maximum duration of reward state (seconds): 15.0
+Duration of pump "on" state (seconds): 4.0
+Maximum time between wheel events (seconds): 3.0
+Total duration of the experiment (hours): 0.05
+Pattern frequency for images: 8.0
+Duration of each reward frame (seconds): 10.0
+Metadata: Type metadata here...
+Protocol hash: 4b6609c0a3763bc08972e8ca1223b2cc
+Image hashes: 
+Checkerboard.png - d21813f3c912d10006dbc7485a7bc383
+Solid.png - 149716097e046e739f81634dac1868d1
+
+-------------------------------Start of experiment-----------------------------------------------
+
+Image starting at: 0.016
+Wheel starting at: 0.022
+Door starting at: 0.017
+Image - Name: Solid.png, Hash: 149716097e046e739f81634dac1868d1, Time: 1.284
+Door - State: Low, Time: 5.285
+Door - State: High, Time: 12.799
+Wheel - State: Low, Time: 20.936
+Wheel - State: High, Time: 20.945
+Wheel revolution 1 of 16
+Wheel - State: Low, Time: 21.937
+Wheel - State: High, Time: 21.947
+Wheel revolution 2 of 16
+Wheel - State: Low, Time: 22.938
+Wheel - State: High, Time: 22.948
+Wheel revolution 3 of 16
+Wheel - State: Low, Time: 23.939
+Wheel - State: High, Time: 23.950
+Wheel revolution 4 of 16
+Wheel - State: Low, Time: 24.941
+Wheel - State: High, Time: 24.950
+Wheel revolution 5 of 16
+Wheel - State: Low, Time: 25.942
+Wheel - State: High, Time: 25.953
+Wheel revolution 6 of 16
+Wheel - State: Low, Time: 26.944
+Wheel - State: High, Time: 26.953
+Wheel revolution 7 of 16
+Wheel - State: Low, Time: 27.945
+Wheel - State: High, Time: 27.955
+Wheel revolution 8 of 16
+Wheel - State: Low, Time: 28.946
+Wheel - State: High, Time: 28.957
+Wheel revolution 9 of 16
+Wheel - State: Low, Time: 29.948
+Wheel - State: High, Time: 29.958
+Wheel revolution 10 of 16
+Wheel - State: Low, Time: 30.950
+Wheel - State: High, Time: 30.959
+Wheel revolution 11 of 16
+Wheel - State: Low, Time: 31.950
+Wheel - State: High, Time: 31.961
+Wheel revolution 12 of 16
+Wheel - State: Low, Time: 32.952
+Wheel - State: High, Time: 32.961
+Wheel revolution 13 of 16
+Door - State: Low, Time: 38.385
+Door - State: High, Time: 45.218
+Wheel - State: Low, Time: 47.446
+Wheel - State: High, Time: 47.456
+Wheel revolution 1 of 4
+Wheel - State: Low, Time: 48.447
+Wheel - State: High, Time: 48.457
+Wheel revolution 2 of 4
+Wheel - State: Low, Time: 49.449
+Wheel - State: High, Time: 49.459
+Wheel revolution 3 of 4
+Wheel - State: Low, Time: 50.451
+Wheel - State: High, Time: 50.461
+Wheel revolution 4 of 4
+Image - Name: Checkerboard.png, Hash: d21813f3c912d10006dbc7485a7bc383, Time: 50.567
+Wheel - State: Low, Time: 51.452
+Wheel - State: High, Time: 51.462
+Wheel - State: Low, Time: 52.454
+Wheel - State: High, Time: 52.463
+Wheel - State: Low, Time: 53.455
+Wheel - State: High, Time: 53.465
+Wheel - State: Low, Time: 54.456
+Wheel - State: High, Time: 54.465
+Wheel - State: Low, Time: 55.457
+Wheel - State: High, Time: 55.468
+Wheel - State: Low, Time: 56.459
+Wheel - State: High, Time: 56.469
+Wheel - State: Low, Time: 57.460
+Wheel - State: High, Time: 57.470
+Wheel - State: Low, Time: 58.461
+Wheel - State: High, Time: 58.472
+Wheel - State: Low, Time: 59.463
+Wheel - State: High, Time: 59.473
+Image - Name: Checkerboard.png, Hash: d21813f3c912d10006dbc7485a7bc383, Time: 60.565
+Door - State: Low, Time: 62.948
+Pump - State: On, Time: 62.953
+Door - State: High, Time: 63.445
+Pump - State: Off, Time: 66.953
+Image - Name: Solid.png, Hash: 149716097e046e739f81634dac1868d1, Time: 67.036
+Wheel - State: Low, Time: 70.346
+Wheel - State: High, Time: 70.355
+Wheel revolution 1 of 11
+Door - State: Low, Time: 76.861
+Door - State: High, Time: 83.446
+Wheel - State: Low, Time: 89.076
+Wheel - State: High, Time: 89.085
+Wheel revolution 1 of 18
+Wheel - State: Low, Time: 90.077
+Wheel - State: High, Time: 90.087
+Wheel revolution 2 of 18
+Door - State: Low, Time: 94.823
+Door - State: High, Time: 101.081
+Door - State: Low, Time: 111.200
+Door - State: High, Time: 114.354
+Wheel - State: Low, Time: 116.909
+Wheel - State: High, Time: 116.920
+Wheel revolution 1 of 18
+Wheel - State: Low, Time: 117.911
+Wheel - State: High, Time: 117.921
+Wheel revolution 2 of 18
+Wheel - State: Low, Time: 118.913
+Wheel - State: High, Time: 118.922
+Wheel revolution 3 of 18
+Wheel - State: Low, Time: 119.914
+Wheel - State: High, Time: 119.924
+Wheel revolution 4 of 18
+Wheel - State: Low, Time: 120.916
+Wheel - State: High, Time: 120.925
+Wheel revolution 5 of 18
+Wheel - State: Low, Time: 121.916
+Wheel - State: High, Time: 121.926
+Wheel revolution 6 of 18
+Wheel - State: Low, Time: 122.917
+Wheel - State: High, Time: 122.928
+Wheel revolution 7 of 18
+Wheel - State: Low, Time: 123.918
+Wheel - State: High, Time: 123.928
+Wheel revolution 8 of 18
+Wheel - State: Low, Time: 124.921
+Wheel - State: High, Time: 124.931
+Wheel revolution 9 of 18
+Wheel - State: Low, Time: 125.922
+Wheel - State: High, Time: 125.932
+Wheel revolution 10 of 18
+Wheel - State: Low, Time: 126.923
+Wheel - State: High, Time: 126.933
+Wheel revolution 11 of 18
+Wheel - State: Low, Time: 127.924
+Wheel - State: High, Time: 127.935
+Wheel revolution 12 of 18
+Wheel - State: Low, Time: 128.927
+Wheel - State: High, Time: 128.936
+Wheel revolution 13 of 18
+Door - State: Low, Time: 131.107
+Door - State: High, Time: 133.927
+Wheel - State: Low, Time: 138.057
+Wheel - State: High, Time: 138.067
+Wheel revolution 1 of 2
+Wheel - State: Low, Time: 139.058
+Wheel - State: High, Time: 139.068
+Wheel revolution 2 of 2
+Image - Name: Checkerboard.png, Hash: d21813f3c912d10006dbc7485a7bc383, Time: 139.168
+Wheel - State: Low, Time: 140.060
+Wheel - State: High, Time: 140.070
+Wheel - State: Low, Time: 141.062
+Wheel - State: High, Time: 141.071
+Wheel - State: Low, Time: 142.063
+Wheel - State: High, Time: 142.073
+Door - State: Low, Time: 144.828
+Pump - State: On, Time: 144.831
+Door - State: High, Time: 148.770
+Pump - State: Off, Time: 148.832
+Image - Name: Solid.png, Hash: 149716097e046e739f81634dac1868d1, Time: 148.921
+Wheel - State: Low, Time: 157.128
+Wheel - State: High, Time: 157.139
+Wheel revolution 1 of 18
+Wheel - State: Low, Time: 158.130
+Wheel - State: High, Time: 158.140
+Wheel revolution 2 of 18
+Wheel - State: Low, Time: 159.131
+Wheel - State: High, Time: 159.141
+Wheel revolution 3 of 18
+Wheel - State: Low, Time: 160.132
+Wheel - State: High, Time: 160.142
+Wheel revolution 4 of 18
+Wheel - State: Low, Time: 161.133
+Wheel - State: High, Time: 161.145
+Wheel revolution 5 of 18
+Wheel - State: Low, Time: 162.136
+Wheel - State: High, Time: 162.145
+Wheel revolution 6 of 18
+Wheel - State: Low, Time: 163.137
+Wheel - State: High, Time: 163.147
+Wheel revolution 7 of 18
+Door - State: Low, Time: 166.360
+Door - State: High, Time: 167.992
+Wheel - State: Low, Time: 175.876
+Wheel - State: High, Time: 175.887
+Wheel revolution 1 of 18
+Wheel - State: Low, Time: 176.878
+Wheel - State: High, Time: 176.888
+Wheel revolution 2 of 18
+Wheel - State: Low, Time: 177.879
+Wheel - State: High, Time: 177.889
+Wheel revolution 3 of 18
+Wheel - State: Low, Time: 178.880
+Wheel - State: High, Time: 178.890
+Wheel revolution 4 of 18
+Wheel - State: Low, Time: 179.882
+Wheel - State: High, Time: 179.892
+Wheel revolution 5 of 18
+Successful termination at: 182.33229660987854
