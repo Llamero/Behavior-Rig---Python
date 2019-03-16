@@ -863,7 +863,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
                 
                 #Otherwise check if wheel has triggered a reward event
                 else:
-                    if(pinState):
+                    if(pinState and wheelCount > 0):
                         connLog.send("Wheel revolution " + str(wheelCount) + " of " + str(rewardRev))
                     if(wheelCount == rewardRev):
                         imagePipe.send(1) #Tell image process that reward event has been triggered
