@@ -285,10 +285,24 @@ def configBoot():
     
     else:
         lxprint("Monitor is already configured correctly...")
+        
+    #Check if program is configured for autoload on restart
+    lxprint("Checking if this program is set to autoload on reboot...")
+    with open("/etc/xdg/lxsession/LXDE-pi/autostart", "r") as f:
+        for line in f:
+            line = line.rstrip() #removes trailing white spaces (print() will add newline back on)
+            if(("@/usr/bin/python3 " + str(*sys.argv)) in line):
+                lxprint("This program is set to autoload on reboot...")
+                break
+        else:
+            lxprint("This program is not yet set to autoload on reboot...")
+            reboot = True
 
 #Command from - https://www.raspberrypi.org/forums/viewtopic.php?t=91677#p641130
 def disableAutomount():
     global devnull
+    global reboot
+    
     lxprint("Disabling USB drive automount...")
     f = Path("/home/pi/.config/pcmanfm/LXDE-pi/pcmanfm.conf")
     #If config file doesn't exist, toggle demo to generate a config file
@@ -314,6 +328,7 @@ def disableAutomount():
     retcode = subprocess.Popen(["(eject)"], shell=True, stdout=devnull, stderr=devnull).wait()
     #Install eject if it is not currently installed
     if retcode != 1:
+        reboot = True
         lxprint("Installing \"eject\"...")
         try:
             dummy = subprocess.Popen(["(sudo apt-get install -y eject)"], shell=True, stdout=devnull, stderr=devnull).wait()
