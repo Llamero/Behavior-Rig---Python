@@ -623,7 +623,7 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
         #Send image data to log
         HASH = str(hasher(imageDir + image)) #Get image hash - computing hash takes 2 ms
         timer = time.time() - expStart #Get experiment time
-        connLog.send("Image - Name: " + image + ", Hash: " + HASH + ", Time: " + str(time.time() - expStart))
+        connLog.send("Image - Name: " + image + ", Hash: " + HASH + ", Time: " + "{:.3f}".format(time.time() - expStart)) #"{:.3f}".format() returns three places after the decimal point
         return
     
     def displayImage(i):
@@ -655,7 +655,7 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
         rewardIndex = 0 #Reset the reward frame index
         return False
         
-    connLog.send("Image starting at: " + str(time.time()-expStart))
+    connLog.send("Image starting at: " + "{:.3f}".format(time.time()-expStart))
    
     #Exit program on any key press
     run = True
@@ -730,7 +730,7 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
         
     #Flag other processes to stop
     stopQueue.value = 1    
-    lxprint("Image stop at: " + str(datetime.now()))
+    lxprint("Image stop at: " + "{:.3f}".format(datetime.now()))
 
 def logProcess(connGPIO, connWheel, connImage, stopQueue):
     global mountDir
@@ -820,7 +820,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
             stopString = "Wheel stop at: "
             runState = True #Initialize assuming control state
             rewardRev = random.randint(minRev, maxRev)
-            connLog.send("Wheel starting at: " + str(time.time()-expStart))
+            connLog.send("Wheel starting at: " + "{:.3f}".format(time.time()-expStart))
             
         #Otherwise, log all other door events, and activate pump output
         else:        
@@ -830,7 +830,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
             GPIO.setup(pinPump, GPIO.OUT)
             GPIO.output(pinPump, GPIO.LOW) #Initialize with pump low
             runState = False #Initialize assuming control state
-            connLog.send("Door starting at: " + str(time.time()-expStart))
+            connLog.send("Door starting at: " + "{:.3f}".format(time.time()-expStart))
         
         #Poll GPIO pin and send events to log when state changes
         pinState = GPIO.input(pin)
@@ -858,7 +858,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
                     if(pinState == doorOpen and not pumpOn):
                         GPIO.output(pinPump, GPIO.HIGH)
                         pumpOn = True
-                        connLog.send("Pump - State: On, Time: " + str(currentTime - expStart))
+                        connLog.send("Pump - State: On, Time: " + "{:.3f}".format(currentTime - expStart))
                         rewardEnd = currentTime + pumpDuration #Set reward to end at end of pump cycle - this will extend reward or shorten time to match pump on time
                 
                 #Otherwise check if wheel has triggered a reward event
@@ -876,7 +876,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
                         if pumpOn:
                             GPIO.output(pinPump, GPIO.LOW)
                             pumpOn = False
-                            connLog.send("Pump - State: Off, Time: " + str(currentTime - expStart))
+                            connLog.send("Pump - State: Off, Time: " + "{:.3f}".format(currentTime - expStart))
                         imagePipe.send(1) #Tell image process reward state is over
                         runState = False
 
@@ -884,7 +884,6 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
             newState = GPIO.input(pin)      
             if (newState ^ pinState):
                 stateChange = True
-                timer = str(currentTime - expStart) #Get event time
                 pinState = newState #Update current state
                 
                 if pinState:
@@ -898,7 +897,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
                 else:
                     stateStr = "State: Low, Time: "
       
-                connLog.send(header + stateStr + timer) 
+                connLog.send(header + stateStr + "{:.3f}".format(currentTime - expStart)) 
                 
                 #Debounce delay
                 time.sleep(delay)
@@ -977,7 +976,7 @@ def runExperiment():
         except:
             pass
             
-        lxprint("Experiment end at: " + str(datetime.now()))
+        lxprint("Experiment end at: " + "{:.3f}".format(datetime.now()))
 
 #---------------------------------Initialize-----------------------------------------------------------------------------------------------------------------------------------------------
 
