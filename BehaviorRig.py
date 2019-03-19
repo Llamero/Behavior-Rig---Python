@@ -976,7 +976,7 @@ def runExperiment():
         except:
             pass
             
-        lxprint("Experiment end at: " + "{:.3f}".format(datetime.now()))
+        lxprint("Experiment end at: " + str(datetime.now()))
 
 #---------------------------------Initialize-----------------------------------------------------------------------------------------------------------------------------------------------
 
