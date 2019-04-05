@@ -543,7 +543,7 @@ def retrieveExperiment(driveLabel):
         protocolHash = hasher(mountDir + protocolFile)
         newProtocolFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", protocolFile)
         os.rename(mountDir + protocolFile, mountDir + newProtocolFile)
-        newProtocolFile = protocolFile
+        #newProtocolFile = protocolFile
         
         #Parse the protocol file
         ref = None #Ref variable to be passed to parsing functions if needed
