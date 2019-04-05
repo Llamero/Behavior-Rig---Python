@@ -20,7 +20,7 @@ import subprocess #Allows programs to be run as separate threads
 
 
 nCages = 4 #Global variable declaring number of cages
-imageWidth = 1024
+imageWidth = 1366
 imageHeight = 768
 
 def buildGUI():
