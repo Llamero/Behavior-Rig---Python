@@ -9,7 +9,9 @@ static int WHEEL_PIN = 6;
 static int DOOR_PIN = 5;
 static int PUMP_PIN = 3;
 static int SLEEP = 30; //Duration of sleep cycle (minutes)
-static int SLEEP_PROBABILITY = 5; //Percent probability that the mouse sleeps each cycle 
+static int SLEEP_PROBABILITY = 5
+
+0...; //Percent probability that the mouse sleeps each cycle 
 
 int a = 0; //Event counter
 long stopTime = 0; //Stop time for door event

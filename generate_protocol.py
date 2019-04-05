@@ -15,6 +15,7 @@ import queue #Allow kill flag to be sent to threads
 from collections import OrderedDict #Create dictionaries where object order is preserved
 if os.name != 'posix':
     import win32api #Get name of USB drive - windows only
+import glob #Search for files in deirectory
 
 nCages = 4 #Global variable declaring number of cages
 imageWidth = 1024
@@ -408,15 +409,64 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 os.mkdir(imageDir)
                 imageFile.save(imageDir + image, format="PNG")
                 
+    def importLUT():
+        if mountDir is None: #If cancel button is pressed, exit thread
+            return
+        
+        #Find the LUT file on the thumb drive
+        LUTlist = glob.glob(mountDir + "Calibration LUT - 201[0-9]-[0-1][0-9]-[0-3][0-9].txt")
+        
+        if(len(LUTlist) == 0):
+            statusLabel.config(text="ERROR: Calibration LUT is missing from this drive.")
+            return
+        elif(len(LUTlist) > 1):
+            statusLabel.config(text="ERROR: There is more than one calibration LUT on this drive.")
+            return
+        else:
+            with open(LUTlist[0]) as f:
+                rawLUT = f.readlines()
+        
+        #Parse the LUT
+        dummy = rawLUT.pop(0) #Remove the header line from the LUT
+        LUTdic = {"Color": [None]*len(rawLUT), "Power": [None]*len(rawLUT)}
+        for a in range(len(rawLUT)):
+            try:
+                #Parse color tuple
+                color = re.search(r"^\(([0-9]{1,3}, ){2}[0-9]{1,3}\)", rawLUT[a]).group(0) #Find color tuple substring in LUT
+                color = tuple(map(int, color[1:-1].split(', '))) #Convert to tuple: https://bytes.com/topic/python/answers/45526-convert-string-tuple
+                LUTdic["Color"][a] = color
+                
+                #Parse power float
+                #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
+                numeric_const_pattern = ',[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?,\n'
+                rx = re.compile(numeric_const_pattern, re.VERBOSE)
+                LUTdic["Power"][a] = float(rx.search(rawLUT[a]).group(0)[1:-1]) #Convert string to float
+                
+            except:
+                statusLabel.config(text="ERROR: invalid syntax on line " + str(a+2) + ", \"" + rawLUT[a])
+                return False
+        
+        return LUTdic
+                
+    
     def drawImage(mode, freq, foreground, background):
         global imageWidth
         global imageHeight
         
+        #Make a solid image that has the same average power of the 255 and 0 intensities
         if mode.startswith("Solid"):
-            br, bg, bb = background
-            fr,fg,fb = foreground
-            background = (round((fr+br)/2), round((fg+bg)/2), round((fb+bb)/2))
-            foreground = background
+            meanPower = (LUTdic["Power"][0] + LUTdic["Power"][len(LUTdic["Power"])-1])/2
+            currentPowerDiff = 2*meanPower
+            minPowerDiff = 2*meanPower
+            minIndex = None
+            for a in range(len(LUTdic["Power"])): #Find the calibrated color with a power closest to the mean power
+                currentPowerDiff = abs(LUTdic["Power"][a] - meanPower)
+                if(currentPowerDiff <= minPowerDiff):
+                    minPowerDiff = currentPowerDiff
+                    minIndex = a
+            
+            foreground = LUTdic["Color"][minIndex]
+            background = foreground
             
         image = Image.new("RGB", (imageWidth, imageHeight), color=background) #Create and image filled with background color
         drawObject = ImageDraw.Draw(image) #Create drawing context
@@ -429,6 +479,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         drawSquare = True
         row = 0
         column = 0
+        
         while y0 < imageHeight:
             y1 = round(squareHeight*(row+1)) #Calculate new position of bottom of square
             x0 = 0 #Reset x0 position
@@ -473,11 +524,13 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         mountDir = findUSB()
         if mountDir is None:
             return
+        LUTdic = importLUT()
         protocolString = parseProtocol()
         exportFiles(protocolString, mountDir)
     time.sleep(2)
     statusLabel.config(text="Protocol upload complete!")
     uploadButton.config(text="Quit")
+
 if __name__ == '__main__':
     buildGUI()
 
