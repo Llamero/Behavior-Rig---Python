@@ -542,8 +542,8 @@ def retrieveExperiment(driveLabel):
         #Append date to protocol file to flag it as being used and prevent accidental reuse
         protocolHash = hasher(mountDir + protocolFile)
         newProtocolFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", protocolFile)
-##################################        os.rename(mountDir + protocolFile, mountDir + newProtocolFile)
-        newProtocolFile = protocolFile
+        os.rename(mountDir + protocolFile, mountDir + newProtocolFile)
+        #newProtocolFile = protocolFile
         
         #Parse the protocol file
         ref = None #Ref variable to be passed to parsing functions if needed
@@ -662,8 +662,8 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
         
     #Get the current reslution of the monitor
     displayObj = pygame.display.Info()
-    #windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h), pygame.FULLSCREEN)
-    windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h))
+    windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h), pygame.FULLSCREEN)
+    #windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h))
     
     #Hide mouse cursor
     pygame.mouse.set_visible(False)
