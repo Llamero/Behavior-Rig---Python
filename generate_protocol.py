@@ -16,6 +16,8 @@ from collections import OrderedDict #Create dictionaries where object order is p
 if os.name != 'posix':
     import win32api #Get name of USB drive - windows only
 import glob #Search for files in deirectory
+import subprocess #Allows programs to be run as separate threads
+
 
 nCages = 4 #Global variable declaring number of cages
 imageWidth = 1024
@@ -114,7 +116,7 @@ def buildGUI():
                         toggleGUI('disabled')
                         protocolThread.start()
                         #protocolThread.join()
-                    elif uploadButton['text'] == "Quit":
+                    elif uploadButton['text'] is "Quit":
                         sys.exit()
                     else:
                         killFlag.put(0) #Kill protocol thread
@@ -157,13 +159,13 @@ def buildGUI():
                 rChk.config(state='disabled')
                 
  ############################DEFAULT PROTOCOLS##########################################################################################            
-            entryDict["Minimum wheel revolutions for reward: "]["var"].set(2)
-            entryDict["Maximum wheel revolutions for reward: "]["var"].set(20)
-            entryDict["Maximum duration of reward state (seconds): "]["var"].set(10)
+            entryDict["Minimum wheel revolutions for reward: "]["var"].set(10)
+            entryDict["Maximum wheel revolutions for reward: "]["var"].set(100)
+            entryDict["Maximum duration of reward state (seconds): "]["var"].set(30)
             entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(3)
-            entryDict["Maximum time between wheel events (seconds): "]["var"].set(10)
+            entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
             entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
-            entryDict["Pattern frequency for images: "]["var"].set(8)
+            entryDict["Pattern frequency for images: "]["var"].set(16)
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
             
             #On days 1 and 2, reward never times out
@@ -184,7 +186,7 @@ def buildGUI():
                    
             #On days 2 and 3 the number of wheel revolutions for a reward is constant
             if presetID >= 2 and presetID <= 3:
-                entryDict["Minimum wheel revolutions for reward: "]["var"].set(5)
+                entryDict["Minimum wheel revolutions for reward: "]["var"].set(25)
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(entryDict["Minimum wheel revolutions for reward: "]["var"].get()) 
                        
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
@@ -348,6 +350,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         nonlocal cage
         nonlocal driveGroup
         nonlocal driveName
+        nonlocal cageNum
 
         mountDir = None
         
@@ -370,6 +373,8 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                     driveName = mountDir.split('/')[-1]
                 mountDir += '/'
                 if re.match(r"^CAGE [1-len(cageList)][A-B]$", driveName): #Check that USB has valid name
+                    cageNum = driveName[-2:-1]
+                    
                     if driveGroup is None:
                         driveGroup = driveName[-1:]
                     else:
@@ -410,42 +415,51 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
                 imageFile.save(imageDir + image, format="PNG")
                 
     def importLUT():
+        nonlocal cageNum
+        
         if mountDir is None: #If cancel button is pressed, exit thread
-            return
+            return False
         
         #Find the LUT file on the thumb drive
-        LUTlist = glob.glob(mountDir + "Calibration LUT - 201[0-9]-[0-1][0-9]-[0-3][0-9].txt")
-        
+        LUTlist = glob.glob(mountDir + "Calibration LUT - 201[0-9]-[0-1][0-9]-[0-3][0-9] - Monitor [1-" + str(len(cageList)) + "].txt")
+
         if(len(LUTlist) == 0):
             statusLabel.config(text="ERROR: Calibration LUT is missing from this drive.")
-            return
+            return False
         elif(len(LUTlist) > 1):
             statusLabel.config(text="ERROR: There is more than one calibration LUT on this drive.")
-            return
-        else:
-            with open(LUTlist[0]) as f:
-                rawLUT = f.readlines()
-        
-        #Parse the LUT
-        dummy = rawLUT.pop(0) #Remove the header line from the LUT
-        LUTdic = {"Color": [None]*len(rawLUT), "Power": [None]*len(rawLUT)}
-        for a in range(len(rawLUT)):
-            try:
-                #Parse color tuple
-                color = re.search(r"^\(([0-9]{1,3}, ){2}[0-9]{1,3}\)", rawLUT[a]).group(0) #Find color tuple substring in LUT
-                color = tuple(map(int, color[1:-1].split(', '))) #Convert to tuple: https://bytes.com/topic/python/answers/45526-convert-string-tuple
-                LUTdic["Color"][a] = color
+            return False
+        else:                
+            #Confirm that LUTnum matches cageNum
+            LUTnum = LUTlist[0][-5:-4]
+            
+            if cageNum == LUTnum:
                 
-                #Parse power float
-                #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
-                numeric_const_pattern = ',[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?,\n'
-                rx = re.compile(numeric_const_pattern, re.VERBOSE)
-                LUTdic["Power"][a] = float(rx.search(rawLUT[a]).group(0)[1:-1]) #Convert string to float
-                
-            except:
-                statusLabel.config(text="ERROR: invalid syntax on line " + str(a+2) + ", \"" + rawLUT[a])
+                with open(LUTlist[0]) as f:
+                    rawLUT = f.readlines()
+            
+                #Parse the LUT
+                dummy = rawLUT.pop(0) #Remove the header line from the LUT
+                LUTdic = {"Color": [None]*len(rawLUT), "Power": [None]*len(rawLUT)}
+                for a in range(len(rawLUT)):
+                    try:
+                        #Parse color tuple
+                        color = re.search(r"^\(([0-9]{1,3}, ){2}[0-9]{1,3}\)", rawLUT[a]).group(0) #Find color tuple substring in LUT
+                        color = tuple(map(int, color[1:-1].split(', '))) #Convert to tuple: https://bytes.com/topic/python/answers/45526-convert-string-tuple
+                        LUTdic["Color"][a] = color
+                        
+                        #Parse power float
+                        #Float search string from: https://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
+                        numeric_const_pattern = ',[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?,\n'
+                        rx = re.compile(numeric_const_pattern, re.VERBOSE)
+                        LUTdic["Power"][a] = float(rx.search(rawLUT[a]).group(0)[1:-1]) #Convert string to float
+                        
+                    except:
+                        statusLabel.config(text="ERROR: invalid syntax on line " + str(a+2) + ", \"" + rawLUT[a])
+                        return False
+            else:
+                statusLabel.config(text="ERROR: LUT number: " + str(LUTnum) + " and cage number: " + str(cageNum) + " don't match. Press \"Cancel\"") 
                 return False
-        
         return LUTdic
                 
     
@@ -515,6 +529,7 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         
     
     cageList = [None]*nCages
+    cageNum = None
     driveGroup = None #Whether uploading to set A or set B
     driveName = None #Name of current USB drive
     statusLabel.config(text="Please insert USB drive...")
@@ -525,8 +540,14 @@ def uploadProtocol(entryDict, imageBarDict, metadataBox, statusLabel, killFlag, 
         if mountDir is None:
             return
         LUTdic = importLUT()
-        protocolString = parseProtocol()
-        exportFiles(protocolString, mountDir)
+        if LUTdic:
+            protocolString = parseProtocol()
+            exportFiles(protocolString, mountDir)
+        else:
+            while(killFlag.get() is not 0):
+                time.sleep(0.1)
+            return
+        
     time.sleep(2)
     statusLabel.config(text="Protocol upload complete!")
     uploadButton.config(text="Quit")
