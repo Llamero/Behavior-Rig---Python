@@ -16,8 +16,6 @@ from collections import OrderedDict #Create dictionaries where object order is p
 if os.name != 'posix':
     import win32api #Get name of USB drive - windows only
 import glob #Search for files in deirectory
-import subprocess #Allows programs to be run as separate threads
-
 
 nCages = 4 #Global variable declaring number of cages
 imageWidth = 1366
