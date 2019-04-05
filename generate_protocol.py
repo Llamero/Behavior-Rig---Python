@@ -116,7 +116,7 @@ def buildGUI():
                         toggleGUI('disabled')
                         protocolThread.start()
                         #protocolThread.join()
-                    elif uploadButton['text'] is "Quit":
+                    elif uploadButton['text'] == "Quit":
                         sys.exit()
                     else:
                         killFlag.put(0) #Kill protocol thread
