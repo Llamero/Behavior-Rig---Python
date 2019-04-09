@@ -864,11 +864,25 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
                 
                 #Otherwise check if wheel has triggered a reward event
                 else:
-                    if(pinState and wheelCount > 0):
+                    if(pinState and wheelCount > 0) and parameterDict["Control image set:"]:
                         connLog.send("Wheel revolution " + str(wheelCount) + " of " + str(rewardRev))
                     if(wheelCount == rewardRev):
                         imagePipe.send(1) #Tell image process that reward event has been triggered
                         runState = False
+            
+            #If there is no control image, leave pump on while door is open
+            if not parameterDict["Control image set:"]:
+                if(pin == pinDoor):
+                    if(pinState == doorOpen and not pumpOn):
+                        GPIO.output(pinPump, GPIO.HIGH)
+                        connLog.send("Pump - State: On, Time: " + "{:.3f}".format(currentTime - expStart))
+                        pumpOn = True
+                    elif(pinState != doorOpen and pumpOn):
+                        GPIO.output(pinPump, GPIO.LOW)
+                        connLog.send("Pump - State: Off, Time: " + "{:.3f}".format(currentTime - expStart))
+                        pumpOn = False
+                    else:
+                        pass
             
             #At end of reward event, turn pump off and flag image process
             if(pin == pinDoor):
