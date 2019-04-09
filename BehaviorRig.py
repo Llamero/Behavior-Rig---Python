@@ -468,9 +468,9 @@ def checkForUSB():
                         lxprint("USB device found...")
                         connected = True
                         deviceFound = True
-                    if deviceFound and re.search(r"CAGE 1[A-B]", outString):
+                    if deviceFound and re.search(r"CAGE 4[A-B]", outString):
                         lxprint("Valid USB device...")
-                        labelName = re.search(r"CAGE 1[A-B]", outString).group(0)
+                        labelName = re.search(r"CAGE 4[A-B]", outString).group(0)
                         deviceValid = True
                         break
                     else:
@@ -505,7 +505,7 @@ def checkForUSB():
                             runExperiment()
                         else:
                             lxprint("FAILURE!")
-                        input("Press enter...")
+                        #input("Press enter...")
                         subprocess.call("sudo eject " + USBdir, shell=True) #Install eject using command sudo apt-get install eject
                         lxprint("USB drive is unmounted.  It is safe to remove the drive...")
                     else:
@@ -705,6 +705,7 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
                 doorState = False
         
         else: #If in control state, monitor wheel
+            frameEnd = currentTime
             if wheelPipe.poll(): #Check if wheel state has changed
                 wheelState = wheelPipe.recv()
                 doorPipe.send(1) #Tell door process that wheel has triggered a reward event
@@ -713,7 +714,7 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
                 wheelState = False
         
         if rewardState:
-            if frameEnd < currentTime: #If frame has expired move to next reward frame
+            if frameEnd <= currentTime: #If frame has expired move to next reward frame
                 displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
                 rewardIndex += 1 #Increment reward index
                 frameEnd = currentTime + rewardFramePeriod #Reset frame timer
@@ -741,7 +742,7 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
     connArray.append(connWheel)
     connArray.append(connImage)
 ##########################Debug tail - shows results file in real time    
-    terminal = subprocess.Popen(["lxterminal -e tail --follow \"" + (mountDir + resultsFile) + "\""], shell=True, stdout=devnull, stderr=devnull)
+    #terminal = subprocess.Popen(["lxterminal -e tail --follow \"" + (mountDir + resultsFile) + "\""], shell=True, stdout=devnull, stderr=devnull)
     
     run = True
     while run:
