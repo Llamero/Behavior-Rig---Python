@@ -3,7 +3,7 @@
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from re import search
-from tkinter import Tk, constants, Label, Button, font, Scrollbar, Frame
+from tkinter import Tk, constants, Label, Button, font, Scrollbar, Frame, IntVar, Radiobutton
 from tkinter.ttk import Treeview
 
 class driveFile:
@@ -72,15 +72,33 @@ class GUI:
         self.tree_scroll.pack(side=constants.RIGHT, padx=5, pady=5, fill=constants.Y)
         self.tree.config(yscrollcommand=self.tree_scroll.set) #Scroll bar has to be set to be controlled by treeview
 
+        #Add radio buttons to select day
+        self.frame_list.append(Frame(master=self.root)) #Create new frame for radio buttons
+        self.frame_list[len(self.frame_list)-1].pack(fill=constants.BOTH, expand=False, side=constants.TOP)
+        self.radio_label = Label(self.frame_list[len(self.frame_list)-1], text = "Please select day:", anchor=constants.W)
+        self.radio_label.pack(side=constants.LEFT, padx=5, pady=5)
+        self.title_font = font.Font(font=self.radio_label.cget("font"))
+        self.font_size = self.title_font.actual()["size"]
+        self.title_font.configure(size=round(self.font_size*1.2))
+        self.radio_label.configure(font=self.title_font)
+        self.day_var = IntVar() #Var to track selected checkbox
+        self.day_var.set(4) #Set "All" as default value
+        self.radio_list = [None]*5 #List to store radio button widgets
+
+        for a in range(5):
+            if(a == 4):
+                text = "All"
+            else:
+                text = "Day #" + str(a+1)
+            self.b = Radiobutton(self.frame_list[len(self.frame_list)-1], text=text, variable=self.day_var, value=a, font=self.title_font, command=None)
+            self.b.pack(fill=constants.BOTH, side=constants.LEFT, expand=True)
+            self.radio_list[a] = self.b
+
         #Add status widget
         self.frame_list.append(Frame(master=self.root)) #Create new frame for status and button
         self.frame_list[len(self.frame_list)-1].pack(fill=constants.BOTH, expand=False, side=constants.TOP)
-        self.title_label = Label(self.frame_list[len(self.frame_list)-1], text = "Please select file:", anchor=constants.W)
+        self.title_label = Label(self.frame_list[len(self.frame_list)-1], text = "Please select file:", anchor=constants.W, font=self.title_font)
         self.title_label.pack(side=constants.LEFT, padx=5, pady=5)
-        self.title_font = font.Font(font=self.title_label.cget("font"))
-        self.font_size = self.title_font.actual()["size"]
-        self.title_font.configure(size=round(self.font_size*1.2))
-        self.title_label.configure(font=self.title_font)
 
         #Create button
         self.gui_button = Button(self.frame_list[len(self.frame_list)-1], text="OK", command=None, font=self.title_font)
@@ -90,7 +108,6 @@ class GUI:
         self.driveDir = driveFile() #Create instance of Google Drive class
         self.createRoot() #Initialize tree with root folder
         self.tree.bind('<<TreeviewOpen>>', self.updateTree) #Update tree upon event
-        self.root.mainloop()
 
     #Generate root directory
     def createRoot(self):
@@ -118,14 +135,33 @@ class GUI:
             if f["mimeType"] == "application/vnd.google-apps.folder":
                 self.tree.insert(oid, 0, text='dummy')
 
-    def allSubFiles(self, day = 'all'):
+    def allSubFiles(self):
+        #Update title instructions and check box text
+        self.title_label.configure(text="Please select the parent driectory to analyze:")
+        self.gui_button.config(text="Analyze")
+
+
+
+
+        self.root.mainloop() #Don't start mainloop until GUI is set, or it will lock out changes
         pass
 
     def singleFile(self):
+        #Hide radiobutton elements
+        for b in self.radio_list:
+            b.pack_forget()
+        self.radio_label.pack_forget()
+
+
+
+
+        self.root.mainloop() #Don't start mainloop until GUI is set, or it will lock out changes
         pass
 
 def main():
     treeGUI = GUI()
+    #treeGUI.allSubFiles()
+    treeGUI.singleFile()
 
 
 
