@@ -420,7 +420,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
                     stepSize = (maxContrast - minContrast)/(nSteps-1)
                     contrast = minContrast
                     while contrast <= maxContrast:
-                        imageName = key + " - contrast " + str(round(contrast))
+                        imageName = key + "-contrast_" + str(round(contrast))
                         rewardList.append(imageName + ".png")
                         contrast += stepSize
                 else:
