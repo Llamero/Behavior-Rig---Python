@@ -22,6 +22,8 @@ import hashlib #Allows for calculating hashes of files for data verification
 import random #Select from list randomly
 
 #Setup variables
+cageNumber = 1
+toggleDebug = False #Whether to turn on debug funcitons - windowed image, GPIO output, block unmount, and block protocol overwrite
 devnull = open(os.devnull) #Send subprocess outputs to dummy temp file
 reboot = False #Global flag for whether the device needs to be rebooted to have changes take effect
 temp_file = "/home/pi/temp_config.txt" #Path for storing temp data to be retrieved after reboot
@@ -39,9 +41,16 @@ imageExt = ".png" #File extension for valid protocol images
 contrastProtocol = None #Whether or not the current protocl is a contrast series
 
 #GPIO variables
+#Arduino pins for testing
+#~ pinWheel = 35 #TTL input from mouse wheel
+#~ pinDoor = 37 #TTL input from mouse door to reward
+#~ pinPump = 36 #TTL output to pump trigger
+
+#Rig pins
 pinWheel = 11 #TTL input from mouse wheel
 pinDoor = 13 #TTL input from mouse door to reward
 pinPump = 22 #TTL output to pump trigger
+
 doorOpen = False #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
@@ -55,8 +64,8 @@ parameterDict = {"USB drive ID:": None, "Control image set:": None, "Reward imag
                 "Maximum duration of reward state (seconds):": None}
 
 contrastDict = {"Minimum time between contrast increments:": None, "Maximum time between contrast increments:": None,
-                "Minimum contrast ratio (0-100):": None, "Maximum contrast ratio (0-100):":, None,
-                "Number of contrast steps:", None}
+                "Minimum contrast ratio (0-100):": None, "Maximum contrast ratio (0-100):": None,
+                "Number of contrast steps:": None}
 
 def hasher(file):
     HASH = hashlib.md5() #MD5 is used as it is faster, and this is not a cryptographic task
@@ -473,9 +482,9 @@ def checkForUSB():
                         lxprint("USB device found...")
                         connected = True
                         deviceFound = True
-                    if deviceFound and re.search(r"CAGE 4[A-B]", outString):
+                    if deviceFound and re.search(r"CAGE " + str(cageNumber) + "[A-B]", outString):
                         lxprint("Valid USB device...")
-                        labelName = re.search(r"CAGE 4[A-B]", outString).group(0)
+                        labelName = re.search(r"CAGE " + str(cageNumber) + "[A-B]", outString).group(0)
                         deviceValid = True
                         break
                     else:
@@ -510,7 +519,9 @@ def checkForUSB():
                             runExperiment()
                         else:
                             lxprint("FAILURE!")
-                        #input("Press enter...")
+                        ##########################################DEBUG - block auto unmount
+                        if toggleDebug:
+                            input("Press enter...")
                         subprocess.call("sudo eject " + USBdir, shell=True) #Install eject using command sudo apt-get install eject
                         lxprint("USB drive is unmounted.  It is safe to remove the drive...")
                     else:
@@ -532,6 +543,7 @@ def retrieveExperiment(driveLabel):
     global resultsFileBase
     global imageExt
     global parameterDict
+    global contrastDict
     global contrastProtocol
 
     #Re-initialize the parameter dictionary with the appropriate parsing functions
@@ -542,8 +554,8 @@ def retrieveExperiment(driveLabel):
                 "Maximum duration of reward state (seconds):": parseNum}
 
     contrastDict = {"Minimum time between contrast increments:": None, "Maximum time between contrast increments:": None,
-                    "Minimum contrast ratio (0-100):": None, "Maximum contrast ratio (0-100):":, None,
-                    "Number of contrast steps:", None}
+                    "Minimum contrast ratio (0-100):": None, "Maximum contrast ratio (0-100):": None,
+                    "Number of contrast steps:": None}
 
     f = Path(mountDir + protocolFile)
     #Extract experiment protocol and make sure it is valid
@@ -552,8 +564,11 @@ def retrieveExperiment(driveLabel):
         #Append date to protocol file to flag it as being used and prevent accidental reuse
         protocolHash = hasher(mountDir + protocolFile)
         newProtocolFile = re.sub(".txt", " - " + str(datetime.now())[:10] + " " + protocolHash + ".txt", protocolFile)
-        os.rename(mountDir + protocolFile, mountDir + newProtocolFile)
-        #newProtocolFile = protocolFile
+        #######################################################DEBUG - toggle protocol rename
+        if toggleDebug:
+            newProtocolFile = protocolFile
+        else:
+            os.rename(mountDir + protocolFile, mountDir + newProtocolFile)
 
         #Parse the protocol file
         ref = None #Ref variable to be passed to parsing functions if needed
@@ -571,7 +586,7 @@ def retrieveExperiment(driveLabel):
 
                 for key, func in contrastDict.items():
                     if(line.startswith(key)):
-                        parameterDict[key] = parseNum(key, line.split(key, 1)[1].strip(), ref) #Send key and data afer ":" with leading and trailing whitespace removed
+                        contrastDict[key] = parseNum(key, line.split(key, 1)[1].strip(), None) #Send key and data afer ":" with leading and trailing whitespace removed
 
 
         #Check dict and flag missing components
@@ -586,6 +601,7 @@ def retrieveExperiment(driveLabel):
         lxprint(str(nValid) + " of " + str(len(parameterDict)) + " parameter lines parsed...")
 
         nContrast = 0
+        contrastProtocol = False
         for key, value in contrastDict.items(): #See if there is a contrast portion in the protocol
             if value: #If value is not None, then contrast protocol is active
                 contrastProtocol = True
@@ -594,18 +610,17 @@ def retrieveExperiment(driveLabel):
             for key, value in contrastDict.items():
                 if value: #If value is not None, then contrast protocol is active
                     nContrast += 1
-            else:
-                lxprint("Cannot find: \"" + key + "\" in protocol file...")
+                else:
+                    lxprint("Cannot find: \"" + key + "\" in contrast section of protocol file...")
 
-            lxprint(str(nValid) + " of " + str(len(parameterDict)) + " parameter lines parsed...")
+            lxprint(str(nContrast) + " of " + str(len(contrastDict)) + " contrast lines parsed...")
         else:
             lxprint("Contrast protocol not found...")
 
-        #If all components parsed successfully, check that all images are available
-        if (nValid == len(parameterDict) and ((nContrast == len(contrastDict)) == contrastProtocol) : #If all elements passed parsing
-
+        #If all components parsed successfully, check that all images are available 
+        if ((nValid == len(parameterDict)) and ((nContrast == len(contrastDict)) == contrastProtocol)): #If all elements passed parsing
             #Verify that all images in the protocol are included in the file directory
-            if(contrastProtocol == (contrastDict["Number of contrast steps:"] == len(parameterDict["Reward image set:"])))
+            if(contrastProtocol == (contrastDict["Number of contrast steps:"] == len(parameterDict["Reward image set:"]))):
                 imageSet = list(set(parameterDict["Control image set:"] + parameterDict["Reward image set:"])) #Create a list of all unique images in the protocol using "set"
                 lxprint("Transferring images to SD card...")
                 subprocess.call("sudo mkdir -p " + imageDir, shell=True) #Create directory to which to transfer images if it doesn't exist
@@ -711,11 +726,13 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
 
     #Get the current reslution of the monitor
     displayObj = pygame.display.Info()
-    windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h), pygame.FULLSCREEN)
-    #windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h))
-
-    #Hide mouse cursor
-    pygame.mouse.set_visible(False)
+    ###############################################################DEBUG - toggle fullscreen and mouse cursor
+    if toggleDebug:
+        windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h))
+    else:
+        windowSurfaceObj = pygame.display.set_mode((displayObj.current_w, displayObj.current_h), pygame.FULLSCREEN)
+        #Hide mouse cursor
+        pygame.mouse.set_visible(False)
 
     #Preload images to RAM
     pictureDict = preloadImages((parameterDict["Control image set:"] + parameterDict["Reward image set:"]))
@@ -728,7 +745,6 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
 
     #Initialize state variabes
     wheelState = 0
-    doorState = 0
     rewardState = False
 
     #Calculate experiment end time:
@@ -749,32 +765,33 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
         #Poll for state changes
         if rewardState: #If in reward state monitor door for trigger to control state
             if doorPipe.poll(): #Check if door state has changed
-                doorState = clearPipe(doorPipe)
+                dummy = clearPipe(doorPipe)
                 rewardState = changeToControl()
+                if(contrastProtocol):
+                    time.sleep(syncDelay)
+                    dummy = clearPipe(wheelPipe) #Clear all remaining wheel flags
             else:
-                doorState = False
+                #If in contrast mode, wait until current frame times out, then index to next contrast frame
+                if contrastProtocol:
+                    if (frameEnd < currentTime and rewardIndex < len(parameterDict["Reward image set:"])): #If frame has timed out, check for next wheel event
+                        if wheelWait:
+                            if wheelPipe.poll():
+                                wheelWait = clearPipe(wheelPipe)
+                        else:
+                            displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
+                            rewardIndex += 1 #Increment reward index
+                            rewardFramePeriod = random.uniform(minContrastTime, maxContrastTime)
+                            frameEnd = currentTime + rewardFramePeriod #Reset frame timer
+                            doorPipe.send(1) #Reset the reward timeout timer
+                            wheelWait = True #Reset flag to wait for wheel event to index next frame
 
-            #If in contrast mode, wait until current frame times out, then index to next contrast frame
-            if contrastProtocol:
-                if frameEnd < currentTime and rewardIndex < len(parameterDict["Reward image set:"]): #If frame has timed out, check for next wheel event
-                    if wheelWait:
-                        if wheelPipe.poll():
-                            wheelWait = clearPipe(wheelPipe)
-                    else:
+                    else: #If not yet waiting for a wheel event, keep the wheelPipe buffer clear
+                        dummy = clearPipe(wheelPipe)
+                else:
+                    if frameEnd <= currentTime: #If frame has expired move to next reward frame
                         displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
                         rewardIndex += 1 #Increment reward index
-                        rewardFramePeriod = random.uniform(minContrastTime, maxContrastTime)
                         frameEnd = currentTime + rewardFramePeriod #Reset frame timer
-                        doorPipe.send(1) #Reset the reward timeout timer
-                        wheelWait = True #Reset flag to wait for wheel event to index next frame
-
-                else: #If not yet waiting for a wheel event, keep the wheelPipe buffer clear
-                    dummy = clearPipe(wheelPipe)
-            else:
-                if frameEnd <= currentTime: #If frame has expired move to next reward frame
-                    displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
-                    rewardIndex += 1 #Increment reward index
-                    frameEnd = currentTime + rewardFramePeriod #Reset frame timer
 
         else: #If in control state, monitor wheel
             frameEnd = currentTime
@@ -797,7 +814,7 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
 
     #Flag other processes to stop
     stopQueue.value = 1
-    lxprint("Image stop at: " + "{:.3f}".format(datetime.now()))
+    lxprint("Image stop at: " + str(datetime.now()))
 
 def logProcess(connGPIO, connWheel, connImage, stopQueue):
     global mountDir
@@ -807,8 +824,9 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
     connArray.append(connGPIO)
     connArray.append(connWheel)
     connArray.append(connImage)
-##########################Debug tail - shows results file in real time
-    #terminal = subprocess.Popen(["lxterminal -e tail --follow \"" + (mountDir + resultsFile) + "\""], shell=True, stdout=devnull, stderr=devnull)
+##########################Debug tail - shows results file in real time    
+    if toggleDebug:
+        terminal = subprocess.Popen(["lxterminal -e tail --follow \"" + (mountDir + resultsFile) + "\""], shell=True, stdout=devnull, stderr=devnull)
 
     run = True
     while run:
@@ -840,7 +858,7 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
             else:
                 f.write(str(data) + "\r\n")
 
-    lxprint("Log stop at: " + "{:.3f}".format(datetime.now()))
+    lxprint("Log stop at: " + str(datetime.now()))
 
 def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
     global pinDoor
@@ -1063,7 +1081,7 @@ def runExperiment():
         except:
             pass
 
-        lxprint("Experiment end at: " + "{:.3f}".format(datetime.now()))
+        lxprint("Experiment end at: " + str(datetime.now()))
 
 #---------------------------------Initialize-----------------------------------------------------------------------------------------------------------------------------------------------
 
