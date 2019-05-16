@@ -254,6 +254,9 @@ def buildGUI():
             #If Test is selected, show contrast controls
             if presetID == 5:
                 frameDict["contrast"].grid()
+                entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
+                entryDict["Total duration of the experiment (hours): "]["var"].set(4)
+
 
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
             else:
@@ -420,7 +423,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
                     stepSize = (maxContrast - minContrast)/(nSteps-1)
                     contrast = minContrast
                     while contrast <= maxContrast:
-                        imageName = key + " - contrast " + str(round(contrast))
+                        imageName = key + "-contrast_" + str(round(contrast))
                         rewardList.append(imageName + ".png")
                         contrast += stepSize
                 else:
