@@ -121,8 +121,8 @@ class GUI:
 
     def fillTree(self, node):
         #If node is not folder, then return
-        #if self.tree.set(node, "MIME Type") != 'application/vnd.google-apps.folder': #Set with two arguments returns the specified value
-         #   return
+        if self.tree.set(node, "MIME Type") != 'application/vnd.google-apps.folder': #Set with two arguments returns the specified value
+           return
 
         node_ID = self.tree.set(node, "ID")
         # Delete the possibly 'dummy' node present.
@@ -135,10 +135,18 @@ class GUI:
             if f["mimeType"] == "application/vnd.google-apps.folder":
                 self.tree.insert(oid, 0, text='dummy')
 
+    def getFiles(self, filter=None):
+
+        pass
+
     def allSubFiles(self):
         #Update title instructions and check box text
         self.title_label.configure(text="Please select the parent driectory to analyze:")
         self.gui_button.config(text="Analyze")
+
+        #Check that user has selected
+
+
 
 
 
