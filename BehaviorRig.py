@@ -23,7 +23,7 @@ import random #Select from list randomly
 
 #Setup variables
 cageNumber = 1
-toggleDebug = True #Whether to turn on debug funcitons - windowed image, GPIO output, block unmount, and block protocol overwrite
+toggleDebug = False #Whether to turn on debug funcitons - windowed image, GPIO output, block unmount, and block protocol overwrite
 devnull = open(os.devnull) #Send subprocess outputs to dummy temp file
 reboot = False #Global flag for whether the device needs to be rebooted to have changes take effect
 temp_file = "/home/pi/temp_config.txt" #Path for storing temp data to be retrieved after reboot
@@ -41,13 +41,16 @@ imageExt = ".png" #File extension for valid protocol images
 contrastProtocol = None #Whether or not the current protocl is a contrast series
 
 #GPIO variables
-pinWheel = 35 #TTL input from mouse wheel
-pinDoor = 37 #TTL input from mouse door to reward
-pinPump = 36 #TTL output to pump trigger
+#Arduino pins for testing
+#~ pinWheel = 35 #TTL input from mouse wheel
+#~ pinDoor = 37 #TTL input from mouse door to reward
+#~ pinPump = 36 #TTL output to pump trigger
 
-#~ pinWheel = 11 #TTL input from mouse wheel
-#~ pinDoor = 13 #TTL input from mouse door to reward
-#~ pinPump = 22 #TTL output to pump trigger
+#Rig pins
+pinWheel = 11 #TTL input from mouse wheel
+pinDoor = 13 #TTL input from mouse door to reward
+pinPump = 22 #TTL output to pump trigger
+
 doorOpen = False #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
 doorBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
