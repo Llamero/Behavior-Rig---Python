@@ -7,7 +7,7 @@ import sys #Allows program to exit on completion
 import psutil #Gives access to USB drive mount events
 import time #Gives access to delays and timing
 from PIL import Image, ImageDraw #Draw images and save as PNG
-from tkinter import font, Tk, Label, Entry, Frame, Checkbutton, Text, Scrollbar, Button, DoubleVar, IntVar, Radiobutton #GUI library
+from tkinter import font, Tk, Label, Entry, Frame, Checkbutton, Text, Scrollbar, Button, DoubleVar, IntVar, Radiobutton, Canvas, Widget #GUI library
 from tkinter.ttk import Separator
 from tkinter.constants import *
 import re #REGEX library
@@ -21,6 +21,73 @@ import glob #Search for files in deirectory
 nCages = 4 #Global variable declaring number of cages
 imageWidth = 1366
 imageHeight = 768
+
+#From: https://gist.github.com/novel-yet-trivial/3eddfce704db3082e38c84664fc1fdf8
+class VerticalScrolledFrame:
+    """
+    A vertically scrolled Frame that can be treated like any other Frame
+    ie it needs a master and layout and it can be a master.
+    :width:, :height:, :bg: are passed to the underlying Canvas
+    :bg: and all other keyword arguments are passed to the inner Frame
+    note that a widget layed out in this frame will have a self.master 3 layers deep,
+    (outer Frame, Canvas, inner Frame) so
+    if you subclass this there is no built in way for the children to access it.
+    You need to provide the controller separately.
+    """
+    def __init__(self, master, **kwargs):
+        width = kwargs.pop('width', None)
+        height = kwargs.pop('height', None)
+        bg = kwargs.pop('bg', kwargs.pop('background', None))
+        self.outer = Frame(master, **kwargs)
+
+        self.vsb = Scrollbar(self.outer, orient=VERTICAL)
+        self.vsb.pack(fill=Y, side=RIGHT)
+        self.canvas = Canvas(self.outer, highlightthickness=0, width=width, height=height, bg=bg)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
+        self.canvas['yscrollcommand'] = self.vsb.set
+        # mouse scroll does not seem to work with just "bind"; You have
+        # to use "bind_all". Therefore to use multiple windows you have
+        # to bind_all in the current widget
+        self.canvas.bind("<Enter>", self._bind_mouse)
+        self.canvas.bind("<Leave>", self._unbind_mouse)
+        self.vsb['command'] = self.canvas.yview
+
+        self.inner = Frame(self.canvas, bg=bg)
+        # pack the inner Frame into the Canvas with the topleft corner 4 pixels offset
+        self.canvas.create_window(4, 4, window=self.inner, anchor='nw')
+        self.inner.bind("<Configure>", self._on_frame_configure)
+
+        self.outer_attr = set(dir(Widget))
+
+    def __getattr__(self, item):
+        if item in self.outer_attr:
+            # geometry attributes etc (eg pack, destroy, tkraise) are passed on to self.outer
+            return getattr(self.outer, item)
+        else:
+            # all other attributes (_w, children, etc) are passed to self.inner
+            return getattr(self.inner, item)
+
+    def _on_frame_configure(self, event=None):
+        x1, y1, x2, y2 = self.canvas.bbox("all")
+        height = self.canvas.winfo_height()
+        self.canvas.config(scrollregion = (0,0, x2, max(y2, height)))
+
+    def _bind_mouse(self, event=None):
+        self.canvas.bind_all("<4>", self._on_mousewheel)
+        self.canvas.bind_all("<5>", self._on_mousewheel)
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _unbind_mouse(self, event=None):
+        self.canvas.unbind_all("<4>")
+        self.canvas.unbind_all("<5>")
+        self.canvas.unbind_all("<MouseWheel>")
+
+    def _on_mousewheel(self, event):
+        """Linux uses event.num; Windows / Mac uses event.delta"""
+        if event.num == 4 or event.delta > 0:
+            self.canvas.yview_scroll(-1, "units" )
+        elif event.num == 5 or event.delta < 0:
+            self.canvas.yview_scroll(1, "units" )
 
 def buildGUI():
     ####See "def loadPreset()" to change default protocol settings###
@@ -48,7 +115,8 @@ def buildGUI():
                                 ("Minimum time between contrast increments: ", None),
                                 ("Maximum time between contrast increments: ", None),
                                 ("Minimum contrast ratio (0-100): ", None),
-                                ("Maximum contrast ratio (0-100): ", None)))
+                                ("Maximum contrast ratio (0-100): ", None),
+                                ("Calculated contrast step ratio: ", None)))
 
     protocolThread = None #Thread object for generating protocol file and exporting it to a USB drive
     killFlag = queue.Queue() #Queue object for passing kill flag to protocol thread from main thread
@@ -146,6 +214,8 @@ def buildGUI():
                     if contrastDict["Number of contrast steps: "]["var"].get() < 2:
                         statusLabel.config(text="ERROR: There must be at least two contrast steps.")
                         error = True
+                    contrastDict["Calculated contrast step ratio: "]["var"].set((contrastDict["Minimum contrast ratio (0-100): "]["var"].get()/contrastDict["Maximum contrast ratio (0-100): "]["var"].get())**(1/(contrastDict["Number of contrast steps: "]["var"].get()-1)))
+
 
             if not error and statusLabel is not None:
                 statusLabel.config(text = "Set protocol parameters and press \"Upload\"...")
@@ -223,12 +293,12 @@ def buildGUI():
             entryDict["Pattern frequency for images: "]["var"].set(16)
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
 
-            contrastDict["Number of contrast steps: "]["var"].set(10)
+            contrastDict["Number of contrast steps: "]["var"].set(8)
             contrastDict["Minimum time between contrast increments: "]["var"].set(5)
             contrastDict["Maximum time between contrast increments: "]["var"].set(contrastDict["Minimum time between contrast increments: "]["var"].get())
-            contrastDict["Minimum contrast ratio (0-100): "]["var"].set(10)
+            contrastDict["Minimum contrast ratio (0-100): "]["var"].set(1)
             contrastDict["Maximum contrast ratio (0-100): "]["var"].set(100)
-
+            contrastDict["Calculated contrast step ratio: "]["var"].set((contrastDict["Minimum contrast ratio (0-100): "]["var"].get()/contrastDict["Maximum contrast ratio (0-100): "]["var"].get())**(1/(contrastDict["Number of contrast steps: "]["var"].get()-1)))
 
             #On days 1 and 2, reward never times out
             if presetID <= 2:
@@ -275,6 +345,7 @@ def buildGUI():
                 cChk, rChk = value["chk"]
                 cChk.config(state='normal')
                 rChk.config(state='normal')
+        contrastDict["Calculated contrast step ratio: "]["entry"].config(state='disabled')
         testbox() #Make sure at least one image is selected
 
     def toggleGUI(state):
@@ -299,8 +370,10 @@ def buildGUI():
             uploadButton.config(text="Upload")
             loadPreset() #Setup GUI to match current preset
 
-    gui = Tk()
-    gui.title("Protocol generator...")
+    mainWindow = Tk()
+    mainWindow.title("Protocol generator...")
+    gui = VerticalScrolledFrame(mainWindow, width=470, height=740)
+    gui.pack(fill=BOTH, expand=True)
 
     #Initialize frame set
     gui.grid_columnconfigure(0, weight=1)
@@ -419,17 +492,16 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
                     minContrast = contrastDict["Minimum contrast ratio (0-100): "]["var"].get()
                     maxContrast = contrastDict["Maximum contrast ratio (0-100): "]["var"].get()
                     nSteps = contrastDict["Number of contrast steps: "]["var"].get()
+                    stepRatio = contrastDict["Calculated contrast step ratio: "]["var"].get()
 
-                    stepSize = (maxContrast - minContrast)/(nSteps-1)
-                    contrast = minContrast
-                    while contrast <= maxContrast:
+                    for a in range(int(nSteps)):
+                        contrast = maxContrast*(stepRatio**a)
                         imageName = key + "-contrast_" + str(round(contrast))
-                        rewardList.append(imageName + ".png")
-                        contrast += stepSize
+                        rewardList = [imageName + ".png"] + rewardList
                 else:
                     rewardList.append(key + ".png")
 
-        imageList = list(set(rewardList + controlList)) #generate a list of all unique images used in the protocol
+        imageList = rewardList + controlList #generate a list of all unique images used in the protocol
         preset = presetVar.get()
         for k,v in presetList:
             if v == preset:
@@ -543,6 +615,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
 
     def exportFiles(fileString, mountDir):
         nonlocal imageList
+        nonlocal contrastDict
 
         if mountDir is None: #If cancel button is pressed, exit thread
             return
@@ -550,13 +623,20 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
         with open(pfileName, 'w+') as pfile: #write protocol specs to protocol file
             pfile.write(fileString)
 
+        #Get contrast exponentiation parameters
+        maxContrast = contrastDict["Maximum contrast ratio (0-100): "]["var"].get()
+        stepRatio = contrastDict["Calculated contrast step ratio: "]["var"].get()
+        stepCount = contrastDict["Number of contrast steps: "]["var"].get()
+
         #Generate images
         imageDir = mountDir + "images/"
         highInt = (0,255,0)
         lowInt = (0,0,0)
+
         for image in imageList:
             if("contrast" in image.lower()): # if image is contrast type, get root type and contrast settings
-                contrast = int(re.search(r"[0-9]{1,3}.png$", image).group(0)[:-4])
+                stepCount -= 1
+                contrast = maxContrast*(stepRatio**stepCount)
                 lowInt, highInt = convertContrast(contrast)
 
             imageFile = drawImage(image, entryDict["Pattern frequency for images: "]["var"].get(), lowInt, highInt)
