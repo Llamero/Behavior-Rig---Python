@@ -115,7 +115,8 @@ def buildGUI():
                                 ("Minimum time between contrast increments: ", None),
                                 ("Maximum time between contrast increments: ", None),
                                 ("Minimum contrast ratio (0-100): ", None),
-                                ("Maximum contrast ratio (0-100): ", None)))
+                                ("Maximum contrast ratio (0-100): ", None),
+                                ("Calculated contrast step ratio: ", None)))
 
     protocolThread = None #Thread object for generating protocol file and exporting it to a USB drive
     killFlag = queue.Queue() #Queue object for passing kill flag to protocol thread from main thread
@@ -213,6 +214,8 @@ def buildGUI():
                     if contrastDict["Number of contrast steps: "]["var"].get() < 2:
                         statusLabel.config(text="ERROR: There must be at least two contrast steps.")
                         error = True
+                    contrastDict["Calculated contrast step ratio: "]["var"].set((contrastDict["Minimum contrast ratio (0-100): "]["var"].get()/contrastDict["Maximum contrast ratio (0-100): "]["var"].get())**(1/(contrastDict["Number of contrast steps: "]["var"].get()-1)))
+
 
             if not error and statusLabel is not None:
                 statusLabel.config(text = "Set protocol parameters and press \"Upload\"...")
@@ -290,12 +293,12 @@ def buildGUI():
             entryDict["Pattern frequency for images: "]["var"].set(16)
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
 
-            contrastDict["Number of contrast steps: "]["var"].set(10)
+            contrastDict["Number of contrast steps: "]["var"].set(8)
             contrastDict["Minimum time between contrast increments: "]["var"].set(5)
             contrastDict["Maximum time between contrast increments: "]["var"].set(contrastDict["Minimum time between contrast increments: "]["var"].get())
-            contrastDict["Minimum contrast ratio (0-100): "]["var"].set(10)
+            contrastDict["Minimum contrast ratio (0-100): "]["var"].set(1)
             contrastDict["Maximum contrast ratio (0-100): "]["var"].set(100)
-
+            contrastDict["Calculated contrast step ratio: "]["var"].set((contrastDict["Minimum contrast ratio (0-100): "]["var"].get()/contrastDict["Maximum contrast ratio (0-100): "]["var"].get())**(1/(contrastDict["Number of contrast steps: "]["var"].get()-1)))
 
             #On days 1 and 2, reward never times out
             if presetID <= 2:
@@ -342,6 +345,7 @@ def buildGUI():
                 cChk, rChk = value["chk"]
                 cChk.config(state='normal')
                 rChk.config(state='normal')
+        contrastDict["Calculated contrast step ratio: "]["entry"].config(state='disabled')
         testbox() #Make sure at least one image is selected
 
     def toggleGUI(state):
@@ -488,17 +492,16 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
                     minContrast = contrastDict["Minimum contrast ratio (0-100): "]["var"].get()
                     maxContrast = contrastDict["Maximum contrast ratio (0-100): "]["var"].get()
                     nSteps = contrastDict["Number of contrast steps: "]["var"].get()
+                    stepRatio = contrastDict["Calculated contrast step ratio: "]["var"].get()
 
-                    stepSize = (maxContrast - minContrast)/(nSteps-1)
-                    contrast = minContrast
-                    while contrast <= maxContrast:
+                    for a in range(int(nSteps)):
+                        contrast = maxContrast*(stepRatio**a)
                         imageName = key + "-contrast_" + str(round(contrast))
-                        rewardList.append(imageName + ".png")
-                        contrast += stepSize
+                        rewardList = [imageName + ".png"] + rewardList
                 else:
                     rewardList.append(key + ".png")
 
-        imageList = list(set(rewardList + controlList)) #generate a list of all unique images used in the protocol
+        imageList = rewardList + controlList #generate a list of all unique images used in the protocol
         preset = presetVar.get()
         for k,v in presetList:
             if v == preset:
@@ -612,6 +615,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
 
     def exportFiles(fileString, mountDir):
         nonlocal imageList
+        nonlocal contrastDict
 
         if mountDir is None: #If cancel button is pressed, exit thread
             return
@@ -619,13 +623,20 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
         with open(pfileName, 'w+') as pfile: #write protocol specs to protocol file
             pfile.write(fileString)
 
+        #Get contrast exponentiation parameters
+        maxContrast = contrastDict["Maximum contrast ratio (0-100): "]["var"].get()
+        stepRatio = contrastDict["Calculated contrast step ratio: "]["var"].get()
+        stepCount = contrastDict["Number of contrast steps: "]["var"].get()
+
         #Generate images
         imageDir = mountDir + "images/"
         highInt = (0,255,0)
         lowInt = (0,0,0)
+
         for image in imageList:
             if("contrast" in image.lower()): # if image is contrast type, get root type and contrast settings
-                contrast = int(re.search(r"[0-9]{1,3}.png$", image).group(0)[:-4])
+                stepCount -= 1
+                contrast = maxContrast*(stepRatio**stepCount)
                 lowInt, highInt = convertContrast(contrast)
 
             imageFile = drawImage(image, entryDict["Pattern frequency for images: "]["var"].get(), lowInt, highInt)
