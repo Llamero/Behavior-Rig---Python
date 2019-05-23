@@ -7,6 +7,7 @@ from tkinter import Tk, constants, Label, Button, font, Scrollbar, Frame, String
 from tkinter.ttk import Treeview
 from collections import OrderedDict
 from time import sleep
+from math import sqrt, ceil
 
 import matplotlib.pyplot as plt #plot results
 from statistics import mean, median
@@ -165,7 +166,7 @@ class GUI:
             title = self.tree.item(node)["text"] #Get name of node
             parent_node = self.tree.parent(node) #Get name of parent node
             parent_title = self.tree.item(parent_node)["text"]
-            night_ID = [ID_str for ID_str in self.radio_list.keys() if ID_str in [title, parent_title]] #Check if node or parent node contain Night id
+            night_ID = [ID_str for ID_str in self.radio_list.keys() if ((ID_str in title) or (ID_str in parent_title))] #Check if node or parent node contain Night id
             if night_ID: #If night ID is found, hide radiobuttons and autoselect radio option
                 self.day_var.set(night_ID[0])
 
@@ -185,12 +186,13 @@ class GUI:
         node_title = self.tree.item(self.active_node)["text"]
         node = self.active_node
         node_list = [node] #List for returning to original selection
+        self.file_dic = {} #Clear file dic
         while("BEHAVIOR DATA (APRIL 2019" not in node_title): #Find tree path from selection to root node
             node = self.tree.parent(node) #Get name of parent node
             node_title = self.tree.item(node)["text"]
             node_list = [node] + node_list
-
         self.getFiles(node_list, 0, None, None, None) #Retrieve all daughter files matching selected day
+        self.plots = analysis(self.day_var.get(), self.file_dic)
 
     def getFiles(self, node_list, node_index, genotype, run_number, day): #Recursive function to get all matching files in all subdirectories
         #Get current node info
@@ -204,6 +206,8 @@ class GUI:
                     file_string = self.driveDir.getFileAsString(self.tree.set(node, "ID")) #Download the file from Google Drive
                     cage = None
                     test_day = day.replace("Night", "Day")
+                    if "Refresh" in test_day:
+                        test_day = "Day #4"
                     preset_day = None
                     for line in file_string:
                         if not cage:
@@ -214,9 +218,13 @@ class GUI:
                             cage = cage.group(0)[19:-1]
                             #Build nested dict and store file
                             try:
-                                self.file_dic[genotype][run_number]
+                                self.file_dic[genotype]
                                 try:
-                                    self.file_dic[genotype][run_number][day] = {cage: file_string}
+                                    self.file_dic[genotype][run_number]
+                                    try:
+                                        self.file_dic[genotype][run_number][day][cage] = file_string
+                                    except:
+                                        self.file_dic[genotype][run_number][day] = {cage: file_string}
                                 except:
                                     self.file_dic[genotype][run_number] = {day: {cage: file_string}}
                             except:
@@ -250,37 +258,37 @@ class GUI:
                 pass
 
 class analysis:
-    def __init__(self, day, file_dic):
+    plt.close("all")
+    def __init__(self, night, file_dic):
         self.file_dic = file_dic
-        self.day = day
-        self.bin_colors = [[1,0,0],[1,1,0],[0,1,0]]
+        self.night = night
+        self.bin_colors = [[1,0,0],[0,1,0],[0,0,1]]
 
         #Retrieve number of files in file_dic
         self.n_files = 0
-        for genotype in file_dic.keys():
-            for run in file_dic[genotype].keys():
-                for day in file_dic[genotype][run].keys():
-                    for cage in file_dic[genotype][run][day].keys():
+        for genotype in self.file_dic.keys():
+            for run in self.file_dic[genotype].keys():
+                for day in self.file_dic[genotype][run].keys():
+                    for cage in self.file_dic[genotype][run][day].keys():
                         self.n_files += 1
-
-        self.day_func = {"Day #1": [],
-                        "Day #2": [],
-                        "Day #3": [],
-                        "Day #4": [],
-                        "Refresher": [],
-                        "Contrast": [],
-                        "All": []}
+        self.night_func = {"Night #1": [],
+                          "Night #2": [self.individualSuccessRate],
+                          "Night #3": [self.individualSuccessRate],
+                          "Night #4": [self.individualSuccessRate],
+                          "Refresher": [self.individualSuccessRate],
+                          "Contrast": [self.individualSuccessRate],
+                          "All": []}
         try:
-            for func in day_func[self.day]:
+            for func in self.night_func[self.night]:
                 func()
         except:
             pass
 
     def individualSuccessRate(self):
-        def analyzeData(self, file, metadata):
+        def analyzeData(file):
             #Lists for data characterization
-            control_wheel_interval = [] #Time between end of reward and first subsequent wheel event
-            reward_door_interval = [] #Time between reward start and first door open
+            control_wheel_latency = {"X": [], "Y": []} #dic of latency (time from end of reward to first wheel event), and time of wheel event
+            reward_door_latency = {"X": [], "Y": []} #dic of latency (time from start of reward to first door event), and time of door event
             door_with_pump_on = [] #TIme of door open event while pump was active
             door_with_pump_off_before_wheel = [] #Time of door open event after pump is off, but before subsequent wheel event
             door_with_pump_off_after_wheel = [] #Time of door open event after pump is off and subsequent first wheel event
@@ -291,9 +299,12 @@ class analysis:
             wheel_interval = [] #Time between wheel events - track mouse speed and activity
             wheel_event_time = [] #Time of each wheel event
             door_open_event_time = [] #Time of each door open event
+            door_events_per_reward = [] #Number of door open events while reward image is active
+            reward_start_time = [] #Time of start of reward
 
             #Tracking variables for data analysis
-            first_wheel = False #First wheel event after prev reward has occured - reset to false on start of reward
+            first_wheel = True #First wheel event after prev reward has ended - reset to false on start of control
+            first_door = True #First door event after prev reward has started - reset to false on start of reward
             reward_active = False #If reward image is active
             pump_on = False #Whether pump is on
             overshoot_counter = 0 #Number of overshoot events during current reward event - reset to 0 on control image
@@ -301,7 +312,11 @@ class analysis:
             prev_wheel_event = 0 #Time of previous wheel event
             door_open_time = 0 #Time of door open event
             door_closed_time = 0 #Time of door closed event
-            reward_time = None #Time that reward state last changed
+            reward_door_event_counter = 0 #Number of door events during reward image.  Reset on control image
+            reward_start = 0 #Time of prev reward start
+            reward_end = 0 #Time of prev reward end
+            reward_timeout = None #Timeout of reward specified in protocol
+            exp_duration = None #Total duration of experiment in seconds
             control_images = []
             reward_images = []
 
@@ -311,9 +326,10 @@ class analysis:
                     wheel_event_time.append(wheel_time)
                     wheel_interval = wheel_time - prev_wheel_event
                     prev_wheel_event
-                    if(not(reward_active or first_wheel)):
+                    if(not(first_wheel)):
                         first_wheel = True
-                        control_wheel_interval.append(wheel_time-reward_time)
+                        control_wheel_latency["X"].append(wheel_time)
+                        control_wheel_latency["Y"].append(wheel_time-reward_end)
                     elif(reward_active):
                         overshoot_counter += 1
                 elif line.startswith("Wheel - State: Low, Time: "):
@@ -326,10 +342,14 @@ class analysis:
                 elif line.startswith("Door - State: Low, "):
                     door_open_time = float(search(r", Time: \d+\.\d+", line).group(0)[8:])
                     door_open_event_time.append(door_open_time)
+                    if(not first_door):
+                        reward_door_latency["X"].append(door_open_time)
+                        reward_door_latency["Y"].append(door_open_time - reward_start)
+                        first_door = True
                     if(reward_active):
                         door_with_pump_on.append(door_open_time)
+                        reward_door_event_counter += 1
                         if(not pump_on):
-                            reward_door_interval.append(door_open_time - reward_time)
                             wheel_overshoot.append(overshoot_counter)
                     else:
                         if(first_wheel):
@@ -346,69 +366,101 @@ class analysis:
                 elif line.startswith("Image - Name: "):
                     image_name = search(r"Image - Name: [^,]+\.png", line).group(0)[14:]
                     reward_time = float(search(r", Time: \d+\.\d+", line).group(0)[8:])
-                    if(image_name in control_images):
+                    if((image_name in control_images) and reward_active):
+                        door_events_per_reward.append(reward_door_event_counter)
+                        reward_door_event_counter = 0
                         reward_active = False
                         overshoot_counter = 0
-                    elif(image_name in reward_images):
-                        reward_active = True
-                        prev_revolution = 0
+                        reward_end = reward_time
                         first_wheel = False
+                    elif((image_name in reward_images) and (not reward_active)):
+                        reward_start_time.append(reward_time)
+                        reward_active = True
+                        first_door = False
+                        prev_revolution = 0
+                        reward_start = reward_time
+                    elif(image_name in (control_images+reward_images)):
+                        pass
                     else:
-                        print("ERROR: Invalid image.")
+                        print("ERROR: " + image_name + " not in " + line)
+
                 elif line.startswith("Pump - State: On, Time: "):
                     pass
                 elif line.startswith("Pump - State: Off, Time: "):
                     pass
-                elif not (control_images and reward_images):
+                elif not (control_images and reward_images and reward_timeout):
                     if("Control image set: [" in line):
                         list_string = search(r"Control image set: \[[^\]]*\]", line).group(0)[20:-1]
                         control_images = list_string.split(", ")
                     if("Reward image set: [" in line):
                         list_string = search(r"Reward image set: \[[^\]]*\]", line).group(0)[19:-1]
                         reward_images = list_string.split(", ")
-                    pass
+                    if("Maximum duration of reward state (seconds): " in line):
+                        reward_timeout = float(search(r"Maximum duration of reward state \(seconds\): \d+\.?\d+", line).group(0)[44:])
+                elif(not exp_duration):
+                    if("Successful termination at: " in line):
+                        exp_duration = float(search(r"Successful termination at: \d+\.\d+", line).group(0)[27:])
                 else:
                     pass
-            return {"control wheel interval": control_wheel_interval, #Time between end of reward and first subsequent wheel event
-                    "reward_door_interval": reward_door_interval, #Time between reward start and first door open
+            return {"control wheel latency": control_wheel_latency, #Time between end of reward and first subsequent wheel event
+                    "reward door latency": reward_door_latency, #Time between reward start and first door open
                     "door with pump on": door_with_pump_on, #TIme of door event while pump was active
                     "door with pump off before wheel": door_with_pump_off_before_wheel, #Time of door event after pump is off, but before subsequent wheel event
                     "door with pump off after wheel": door_with_pump_off_after_wheel, #Time of door event after pump is off and subsequent first wheel event
                     "door event duration reward": door_event_duration_reward, #Duration of each door open event during reward and before first wheel
                     "door event duration control": door_event_duration_control, #Duration of each door open event during control image after first wheel
                     "revolutions before reset": revolutions_before_reset, #Number of wheel revolutions when wheel counter was reset
-                    "wheel_overshoot": wheel_overshoot, #Number of extra wheel revolutions after reward is active
+                    "wheel overshoot": wheel_overshoot, #Number of extra wheel revolutions after reward is active
                     "wheel interval": wheel_interval, #Time between wheel events - track mouse speed and activity
                     "wheel event time": wheel_event_time, #Time of each wheel event
-                    "door open event time": door_open_event_time} #Time of each door open event
+                    "door open event time": door_open_event_time, #Time of each door open event
+                    "door events per reward": door_events_per_reward, #Number of door open events while reward image is active
+                    "reward start time": reward_start_time, #Time of start of reward
+                    "reward timeout": reward_timeout, #Timeout of reward specified in protocol
+                    "experiment duration": exp_duration} #Total duration of experiment
 
         raster_list = []
         x_label_list = []
-        for genotype in file_dic.keys():
-            for run in file_dic[genotype].keys():
-                for day in file_dic[genotype][run].keys():
-                    for cage, file in file_dic[genotype][run][day].items():
-                        analysis_dic = raster_list(file, {"genotype": genotype, "run": run, "day": day, "cage": cage})
-                        raster_list.append([analysis_dic["door with pump on"], analysis_dic["door with pump off before wheel"], analysis_dic["door with pump off after wheel"]])
-                        x_label_string = generateSummaryString(analysis_dic)
-                        x_label_list.append(x_label_string)
-
-        self.plotRaster(raster_array, ["Between wheel events", "After reward and before wheel", "During active reward"], True, x_label_list)
+        x_scatter_list = []
+        y_scatter_list = []
+        scatter_titles = []
+        duration_list = []
+        timeout_list = []
+        for genotype in self.file_dic.keys():
+            for run in self.file_dic[genotype].keys():
+                for day in self.file_dic[genotype][run].keys():
+                    for cage in sorted(self.file_dic[genotype][run][day].keys()):
+                        analysis_dic = analyzeData(self.file_dic[genotype][run][day][cage])
+                        #raster_list(file, {"genotype": genotype, "run": run, "day": day, "cage": cage})
+                        raster_list += [analysis_dic["door with pump off after wheel"] + analysis_dic["door with pump off before wheel"], analysis_dic["door with pump on"], analysis_dic["reward start time"]]
+                        x_scatter_list.append(analysis_dic["reward door latency"]["X"])
+                        y_scatter_list.append(analysis_dic["reward door latency"]["Y"])
+                        scatter_titles.append("CAGE #" + cage)
+                        duration_list.append(analysis_dic["experiment duration"])
+                        timeout_list.append(analysis_dic["reward timeout"])
+                        #x_label_string = generateSummaryString(analysis_dic)
+                        #x_label_list.append(x_label_string)
+        #self.plotRaster(raster_list, ["Control Door", "Reward Door", "Reward Start"], True, None)
+        self.plotScatter(x_scatter_list, y_scatter_list, scatter_titles, "Time between start of reward and first door event", True, duration_list, timeout_list)
 
     def plotRaster(self, raster_array, raster_bins, stagger_rasters, x_labels):
         total_line_width = 0.8 #Fraction of 1
-        n_samples = len(raster_array)/len(self.bin_colors)
+        n_samples = int(len(raster_array)/len(self.bin_colors))
         raster_colors = self.bin_colors*(n_samples) #Assign a line color for each element in raster array
-        raster_offsets = [int(i/len(self.bin_colors))+1 for i in range(len(raster_colors))] #Stack all bins per mouse/day
+        raster_offsets = [int(i/len(raster_bins))+1 for i in range(len(raster_colors))] #Stack all bins per mouse/day
         raster_line_length = [total_line_width]*len(raster_colors) #Make line widths the default line width
         if stagger_rasters:
             new_line_width = total_line_width/len(raster_bins) #Divide total line width across all bins
             offset = 0-(total_line_width)/2
             for a in range(len(raster_array)):
-                 raster_line_length = newLineWidth
-                 sub_bin = a%len(self.bin_colors) #
+                 raster_line_length[a] = new_line_width
+                 sub_bin = a%len(self.bin_colors)
                  n_bin = int(a/len(self.bin_colors))+1
                  raster_offsets[a] = n_bin + offset + new_line_width*(sub_bin+0.5)
+
+        fig, axes = plt.subplots()
+        axes.eventplot(raster_array, colors=raster_colors, lineoffsets=raster_offsets, linelengths=raster_line_length, orientation='vertical')
+
 
         if(x_labels):
             x_tick = list(range(1,n_samples+1))
@@ -418,8 +470,52 @@ class analysis:
             figWindow[0] = figWindow[0]*1.2
             figWindow[1] = figWindow[1]*1.2
             fig.set_size_inches(figWindow[0], figWindow[1])
+        plt.show()
+
+    def plotScatter(self, x_array, y_array, titles, main_title, semilog, x_max_list, hline):
+        print(hline)
+        x_max = None
+        #Calculate minimum grid size needed to accomodate all plots
+        h_grid = ceil(sqrt(len(x_array)))
+        v_grid = ceil(len(x_array)/h_grid)
+
+        #Get minimum and maximum value for y-axis to keep constant - from: https://stackoverflow.com/questions/952914/how-to-make-a-flat-list-out-of-list-of-lists
+        y_max = max([item for sublist in y_array for item in sublist])
+        y_min = min([item for sublist in y_array for item in sublist])
+        if(hline):
+            if(max(hline) > y_max):
+                if(x_max):
+                    if(hline < x_max/10):
+                        y_max = max(hline)
+                else:
+                    y_max = max(hline)
+
+        if(x_max_list):
+            x_max = max(x_max_list)
+        fig, axes = plt.subplots(h_grid, v_grid)
+        if(main_title):
+            fig.suptitle(main_title)
+        for v in range(v_grid):
+            for h in range(h_grid):
+                index = (v*h_grid + h)
+                print(index)
+                axes[v,h].plot(x_array[index], y_array[index], ".")
+                axes[v,h].set_ylim([y_min, y_max])
+                if(x_max):
+                    axes[v,h].set_xlim([0, x_max])
+                if(hline):
+                    axes[v,h].axhline(y=hline[index], xmin=0, xmax=1, linestyle="--", color="r")
+                if(x_max_list):
+                    axes[v,h].axvline(x=x_max_list[index], ymin=0, ymax=1, linestyle="-", color="g")
+                if(semilog):
+                    axes[v,h].semilogy()
+                if(index < len(x_array)):
+                    if(titles):
+                        axes[v,h].set_title(titles[index])
 
 
+
+        plt.show()
 
 
 
