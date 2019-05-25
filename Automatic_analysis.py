@@ -426,6 +426,7 @@ class analysis:
         scatter_titles = []
         duration_list = []
         timeout_list = []
+        n_row = 0
         for genotype in self.file_dic.keys():
             for run in self.file_dic[genotype].keys():
                 for day in self.file_dic[genotype][run].keys():
@@ -435,13 +436,26 @@ class analysis:
                         raster_list += [analysis_dic["door with pump off after wheel"] + analysis_dic["door with pump off before wheel"], analysis_dic["door with pump on"], analysis_dic["reward start time"]]
                         x_scatter_list.append(analysis_dic["reward door latency"]["X"])
                         y_scatter_list.append(analysis_dic["reward door latency"]["Y"])
-                        scatter_titles.append("CAGE #" + cage)
+                        scatter_titles.append(genotype + ": CAGE #" + cage)
                         duration_list.append(analysis_dic["experiment duration"])
-                        timeout_list.append(analysis_dic["reward timeout"])
+                        timeout_list += [[analysis_dic["reward timeout"]]]
                         #x_label_string = generateSummaryString(analysis_dic)
                         #x_label_list.append(x_label_string)
+                    n_row += 1
+                    if(self.n_files > 1): #Fill in empty plot data for missing cages, if more than one cage was selected
+                        for a in range(4-len(self.file_dic[genotype][run][day].keys())):
+                            raster_list += [[], [], []]
+                            x_scatter_list.append([])
+                            y_scatter_list.append([])
+                            scatter_titles.append("")
+                            duration_list.append(None)
+                            timeout_list += [[]]
+
         #self.plotRaster(raster_list, ["Control Door", "Reward Door", "Reward Start"], True, None)
-        self.plotScatter(x_scatter_list, y_scatter_list, scatter_titles, "Time between start of reward and first door event", True, duration_list, timeout_list)
+        if(n_row == 1):
+            n_row = None
+
+        self.plotScatter(x_scatter_list, y_scatter_list, scatter_titles, "Time between start of reward and first door event", True, duration_list, timeout_list, n_row)
 
     def plotRaster(self, raster_array, raster_bins, stagger_rasters, x_labels):
         total_line_width = 0.8 #Fraction of 1
@@ -472,40 +486,47 @@ class analysis:
             fig.set_size_inches(figWindow[0], figWindow[1])
         plt.show()
 
-    def plotScatter(self, x_array, y_array, titles, main_title, semilog, x_max_list, hline):
-        print(hline)
+    def plotScatter(self, x_array, y_array, titles, main_title, semilog, x_max_list, hline, v_grid):
         x_max = None
         #Calculate minimum grid size needed to accomodate all plots
-        h_grid = ceil(sqrt(len(x_array)))
-        v_grid = ceil(len(x_array)/h_grid)
-
+        if(not v_grid):
+            h_grid = ceil(sqrt(len(x_array)))
+            v_grid = ceil(len(x_array)/h_grid)
+        else:
+            h_grid = ceil(len(x_array)/v_grid)
+        print(v_grid)
+        print(h_grid)
         #Get minimum and maximum value for y-axis to keep constant - from: https://stackoverflow.com/questions/952914/how-to-make-a-flat-list-out-of-list-of-lists
         y_max = max([item for sublist in y_array for item in sublist])
         y_min = min([item for sublist in y_array for item in sublist])
+        if(y_min < 1):
+            y_min = 1
         if(hline):
-            if(max(hline) > y_max):
+            max_hline = max(([item for sublist in hline for item in sublist]))
+            if(max_hline > y_max):
                 if(x_max):
-                    if(hline < x_max/10):
+                    if(max_hline < x_max/10):
                         y_max = max(hline)
                 else:
                     y_max = max(hline)
-
         if(x_max_list):
-            x_max = max(x_max_list)
-        fig, axes = plt.subplots(h_grid, v_grid)
+            x_max = max(x for x in x_max_list if x is not None)
+        fig, axes = plt.subplots(v_grid, h_grid, squeeze=False)
         if(main_title):
             fig.suptitle(main_title)
         for v in range(v_grid):
             for h in range(h_grid):
                 index = (v*h_grid + h)
-                print(index)
                 axes[v,h].plot(x_array[index], y_array[index], ".")
                 axes[v,h].set_ylim([y_min, y_max])
                 if(x_max):
                     axes[v,h].set_xlim([0, x_max])
-                if(hline):
-                    axes[v,h].axhline(y=hline[index], xmin=0, xmax=1, linestyle="--", color="r")
-                if(x_max_list):
+                if(hline[index]):
+                    for line in hline[index]:
+                        print(line)
+                        axes[v,h].axhline(y=line, xmin=0, xmax=1, linestyle="--", color="r")
+                print(index)
+                if(x_max_list[index]):
                     axes[v,h].axvline(x=x_max_list[index], ymin=0, ymax=1, linestyle="-", color="g")
                 if(semilog):
                     axes[v,h].semilogy()
