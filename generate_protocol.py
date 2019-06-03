@@ -263,7 +263,7 @@ def buildGUI():
                 if(key == "Solid"):
                     rVar.set(0)
                     cVar.set(1)
-                elif(key == "Checkerboard"):
+                elif(key == "Vertical_Stripes"):
                     rVar.set(1)
                     cVar.set(0)
                 else:
@@ -285,8 +285,8 @@ def buildGUI():
 
  ############################DEFAULT PROTOCOLS##########################################################################################
             entryDict["Minimum wheel revolutions for reward: "]["var"].set(10)
-            entryDict["Maximum wheel revolutions for reward: "]["var"].set(100)
-            entryDict["Maximum duration of reward state (seconds): "]["var"].set(30)
+            entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
+            entryDict["Maximum duration of reward state (seconds): "]["var"].set(10)
             entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(3)
             entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
             entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
@@ -321,12 +321,13 @@ def buildGUI():
                 entryDict["Minimum wheel revolutions for reward: "]["var"].set(25)
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(entryDict["Minimum wheel revolutions for reward: "]["var"].get())
 
+            if presetID == 3:
+                entryDict["Maximum duration of reward state (seconds): "]["var"].set(30)
+
             #If Test is selected, show contrast controls
             if presetID == 5:
                 frameDict["contrast"].grid()
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
-                entryDict["Total duration of the experiment (hours): "]["var"].set(4)
-
 
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
             else:
