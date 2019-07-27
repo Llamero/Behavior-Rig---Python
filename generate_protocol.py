@@ -287,8 +287,8 @@ def buildGUI():
             entryDict["Minimum wheel revolutions for reward: "]["var"].set(10)
             entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
             entryDict["Maximum duration of reward state (seconds): "]["var"].set(10)
-            entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(3)
-            entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
+            entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(1)
+            entryDict["Maximum time between wheel events (seconds): "]["var"].set(10)
             entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
             entryDict["Pattern frequency for images: "]["var"].set(16)
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
@@ -305,6 +305,7 @@ def buildGUI():
                 entryDict["Maximum duration of reward state (seconds): "]["var"].set(entryDict["Total duration of the experiment (hours): "]["var"].get()*60*60)
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(entryDict["Total duration of the experiment (hours): "]["var"].get()*60*60)
                 entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Total duration of the experiment (hours): "]["var"].get()*60*60)
+                entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(3)
 
                 #Day 1 - Always show reward image and leave reward active - no wheel trigger needed
                 if presetID == 1:
@@ -324,8 +325,9 @@ def buildGUI():
             if presetID == 3:
                 entryDict["Maximum duration of reward state (seconds): "]["var"].set(30)
 
-            #If Test is selected, show contrast controls
+            #If Test is selected, show contrast controls, and reduce wheel reset time
             if presetID == 5:
+                entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["contrast"].grid()
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
 
