@@ -617,7 +617,7 @@ def retrieveExperiment(driveLabel):
         else:
             lxprint("Contrast protocol not found...")
 
-        #If all components parsed successfully, check that all images are available 
+        #If all components parsed successfully, check that all images are available
         if ((nValid == len(parameterDict)) and ((nContrast == len(contrastDict)) == contrastProtocol)): #If all elements passed parsing
             #Verify that all images in the protocol are included in the file directory
             if(contrastProtocol == (contrastDict["Number of contrast steps:"] == len(parameterDict["Reward image set:"]))):
@@ -778,6 +778,8 @@ def imageProcess(connLog, stopQueue, doorPipe, wheelPipe, expStart):
                             if wheelPipe.poll():
                                 wheelWait = clearPipe(wheelPipe)
                         else:
+                            if rewardIndex == 0: #If this is the first reward image, randomly shuffle the reward image sequence
+                                random.shuffle(parameterDict["Reward image set:"])
                             displayImage(parameterDict["Reward image set:"][rewardIndex%len(parameterDict["Reward image set:"])]) #Show next image in reward sequence
                             rewardIndex += 1 #Increment reward index
                             rewardFramePeriod = random.uniform(minContrastTime, maxContrastTime)
@@ -824,7 +826,7 @@ def logProcess(connGPIO, connWheel, connImage, stopQueue):
     connArray.append(connGPIO)
     connArray.append(connWheel)
     connArray.append(connImage)
-##########################Debug tail - shows results file in real time    
+##########################Debug tail - shows results file in real time
     if toggleDebug:
         terminal = subprocess.Popen(["lxterminal -e tail --follow \"" + (mountDir + resultsFile) + "\""], shell=True, stdout=devnull, stderr=devnull)
 
