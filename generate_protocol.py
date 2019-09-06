@@ -95,7 +95,7 @@ def buildGUI():
     imageBarDict = {} #Outputs from image select check boxes
     prevImageBarVars = {} #Last recorded state of check boxes
     imageList = ['Solid', 'Checkerboard', 'Horizontal_Stripes', 'Vertical_Stripes'] #List of images available for a protocol
-    presetList = [("Day #1", 1), ("Day #2", 2), ("Day #3", 3), ("Day #4", 4), ("Test", 5), ("Custom", 6)] #List of available presets
+    presetList = [("Day #1", 1), ("Day #2", 2), ("Day #3", 3), ("Day #4", 4), ("Contrast", 5), ("Freq", 6)] #List of available presets
     radioList = [None]*len(presetList) #List of radiobutton objects
     presetVar = None #Preset protocol ID
     initialPreset = 1 #Starting preset value
@@ -117,6 +117,13 @@ def buildGUI():
                                 ("Minimum contrast ratio (0-100): ", None),
                                 ("Maximum contrast ratio (0-100): ", None),
                                 ("Calculated contrast step ratio: ", None)))
+
+    frequencyDict = OrderedDict((("Number of frequency steps: ", None),
+                                ("Minimum time between frequency increments: ", None),
+                                ("Maximum time between frequency increments: ", None),
+                                ("Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): ", None),
+                                ("Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): ", None),
+                                ("Calculated frequency step ratio: ", None)))
 
     protocolThread = None #Thread object for generating protocol file and exporting it to a USB drive
     killFlag = queue.Queue() #Queue object for passing kill flag to protocol thread from main thread
@@ -161,6 +168,7 @@ def buildGUI():
         nonlocal frameDict
         nonlocal entryDict
         nonlocal contrastDict
+        nonlocal frequencyDict
         nonlocal statusLabel
         nonlocal imageBarDict
         nonlocal metadataBox
@@ -224,7 +232,7 @@ def buildGUI():
                     if uploadButton['text'] == "Upload":
                         #Run the protocol generator as a separate thread from the GUI so that the GUI doesn't lock up
                         killFlag.put(1)
-                        protocolThread = threading.Thread(target=uploadProtocol, args=(frameDict, entryDict, contrastDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton, presetVar, presetList))
+                        protocolThread = threading.Thread(target=uploadProtocol, args=(frameDict, entryDict, contrastDict, frequencyDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton, presetVar, presetList))
                         toggleGUI('disabled')
                         protocolThread.start()
                         #protocolThread.join()
@@ -248,15 +256,17 @@ def buildGUI():
         nonlocal frameDict
         nonlocal entryDict
         nonlocal contrastDict
+        nonlocal frequencyDict
         nonlocal imageBarDict
         nonlocal presetVar
         nonlocal presetList
         nonlocal statusLabel
         presetID = presetVar.get()
         statusLabel.config(text = "Set protocol parameters and press \"Upload\"...")
+        maxFreqString = str()
 
         #Apply nonlocal defaults if preset option is selected
-        if presetID < len(presetList):
+        if True:
             #Set default image check state to solid control and checkerboard reward
             for key, value in imageBarDict.items():
                 cVar, rVar = value["var"]
@@ -275,6 +285,10 @@ def buildGUI():
                 value["entry"].config(state='disabled')
             for key, value in contrastDict.items():
                 value["entry"].config(state='disabled')
+            for key, value in frequencyDict.items():
+                value["entry"].config(state='disabled')
+            for key, value in contrastDict.items():
+                value["entry"].config(state='disabled')
             for key, value in imageBarDict.items():
                 cChk, rChk = value["chk"]
                 cChk.config(state='disabled')
@@ -282,6 +296,7 @@ def buildGUI():
 
             #Hide contrast controls
             frameDict["contrast"].grid_remove()
+            frameDict["frequency"].grid_remove()
 
  ############################DEFAULT PROTOCOLS##########################################################################################
             entryDict["Minimum wheel revolutions for reward: "]["var"].set(10)
@@ -299,6 +314,14 @@ def buildGUI():
             contrastDict["Minimum contrast ratio (0-100): "]["var"].set(1)
             contrastDict["Maximum contrast ratio (0-100): "]["var"].set(100)
             contrastDict["Calculated contrast step ratio: "]["var"].set((contrastDict["Minimum contrast ratio (0-100): "]["var"].get()/contrastDict["Maximum contrast ratio (0-100): "]["var"].get())**(1/(contrastDict["Number of contrast steps: "]["var"].get()-1)))
+
+            frequencyDict["Number of frequency steps: "]["var"].set(8)
+            frequencyDict["Minimum time between frequency increments: "]["var"].set(5)
+            frequencyDict["Maximum time between frequency increments: "]["var"].set(frequencyDict["Minimum time between frequency increments: "]["var"].get())
+            frequencyDict["Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].set(2)
+            frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].set(100)
+            frequencyDict["Calculated frequency step ratio: "]["var"].set((frequencyDict["Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()/frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get())**(1/(frequencyDict["Number of frequency steps: "]["var"].get()-1)))
+
 
             #On days 1 and 2, reward never times out
             if presetID <= 2:
@@ -326,9 +349,15 @@ def buildGUI():
                 entryDict["Maximum duration of reward state (seconds): "]["var"].set(30)
 
             #If Test is selected, show contrast controls, and reduce wheel reset time
+
             if presetID == 5:
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["contrast"].grid()
+                entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
+
+            if presetID == 6:
+                entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
+                frameDict["frequency"].grid()
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
 
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
@@ -337,17 +366,6 @@ def buildGUI():
 
 ##################################################################################################################
 
-        #if custom is selected activate all entry options
-        else:
-            #Activate entry boxes and check boxes
-            for key, value in entryDict.items():
-                value["entry"].config(state='normal')
-            for key, value in contrastDict.items():
-                value["entry"].config(state='normal')
-            for key, value in imageBarDict.items():
-                cChk, rChk = value["chk"]
-                cChk.config(state='normal')
-                rChk.config(state='normal')
         contrastDict["Calculated contrast step ratio: "]["entry"].config(state='disabled')
         testbox() #Make sure at least one image is selected
 
@@ -380,7 +398,7 @@ def buildGUI():
 
     #Initialize frame set
     gui.grid_columnconfigure(0, weight=1)
-    frameList = ["entry", "contrast", "check", "radio", "metadata", "button"]
+    frameList = ["entry", "contrast", "frequency", "check", "radio", "metadata", "button"]
     frameDict = {}
     for row in range(len(frameList)):
         frameDict[frameList[row]] = Frame(master=gui)
@@ -416,6 +434,18 @@ def buildGUI():
         entry.grid(column=1, row=rowList.index(key), sticky=E, pady=10, padx=(0,5))
         contrastDict[key] = {"label": label, "var": var, "entry": entry}
     Separator(frameDict["contrast"], orient=HORIZONTAL).grid(row=len(contrastDict), columnspan=5, sticky="ew")
+
+    #Create set of entry boxes for entering in frequency protocol
+    frameDict["frequency"].grid_columnconfigure(0, weight=1)
+    rowList = list(frequencyDict.keys())
+    for key, value in frequencyDict.items():
+        label = Label(frameDict["frequency"], text = key, anchor=W)
+        label.grid(column=0, row=rowList.index(key), sticky=W)
+        var = DoubleVar(frameDict["frequency"])
+        entry = Entry(frameDict["frequency"], width=10, textvariable=var, justify=RIGHT, disabledforeground="BLACK", validate="focus", validatecommand=lambda: testEntry(False))
+        entry.grid(column=1, row=rowList.index(key), sticky=E, pady=10, padx=(0,5))
+        frequencyDict[key] = {"label": label, "var": var, "entry": entry}
+    Separator(frameDict["frequency"], orient=HORIZONTAL).grid(row=len(frequencyDict), columnspan=5, sticky="ew")
 
 
     #Create pair of check box bars to select preset images for control and reward
@@ -470,13 +500,14 @@ def buildGUI():
 
     gui.mainloop() #Blocks rest of code from executing - similar to while True with update loop
 
-def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton, presetVar, presetList):
+def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDict, metadataBox, statusLabel, killFlag, uploadButton, presetVar, presetList):
     global nCages
 
     def parseProtocol():
         nonlocal frameDict
         nonlocal entryDict
         nonlocal contrastDict
+        nonlocal frequencyDict
         nonlocal imageBarDict
         nonlocal metadataBox
         nonlocal imageList
@@ -501,9 +532,20 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
                         contrast = maxContrast*(stepRatio**a)
                         imageName = key + "-contrast_" + str(round(contrast))
                         rewardList = [imageName + ".png"] + rewardList
+
+                if frameDict["frequency"].grid_info(): #If frequency series is selected, generate a list of frequency images.
+                    minFreq = frequencyDict["Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()
+                    maxFreq = frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()
+                    nSteps = frequencyDict["Number of frequency steps: "]["var"].get()
+                    stepRatio = frequencyDict["Calculated frequency step ratio: "]["var"].get()
+
+                    for a in range(int(nSteps)):
+                        frequency = maxFreq*(stepRatio**a)
+                        imageName = key + "-frequency_" + str(round(frequency))
+                        rewardList = [imageName + ".png"] + rewardList
                 else:
                     rewardList.append(key + ".png")
-
+        rewardList.append("Solid reward - negative control.png") #Add negative control to reward list
         imageList = rewardList + controlList #generate a list of all unique images used in the protocol
         preset = presetVar.get()
         for k,v in presetList:
@@ -518,8 +560,12 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
         for key, value in entryDict.items():
             protocolString += key + str(value["var"].get()) + "\r\n"
 
-        if frameDict["contrast"].grid_info():
+        if frameDict["contrast"].grid_info(): #If contrast frame is active, add contrast data to protocol string
             for key, value in contrastDict.items():
+                protocolString += key + str(value["var"].get()) + "\r\n"
+
+        if frameDict["frequency"].grid_info(): #If frequency frame is active, add frequency data to protocol string
+            for key, value in frequencyDict.items():
                 protocolString += key + str(value["var"].get()) + "\r\n"
 
 
@@ -619,6 +665,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
     def exportFiles(fileString, mountDir):
         nonlocal imageList
         nonlocal contrastDict
+        nonlocal frequencyDict
 
         if mountDir is None: #If cancel button is pressed, exit thread
             return
@@ -626,23 +673,32 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
         with open(pfileName, 'w+') as pfile: #write protocol specs to protocol file
             pfile.write(fileString)
 
-        #Get contrast exponentiation parameters
+        #Get contrast and frequency exponentiation parameters
         maxContrast = contrastDict["Maximum contrast ratio (0-100): "]["var"].get()
-        stepRatio = contrastDict["Calculated contrast step ratio: "]["var"].get()
-        stepCount = contrastDict["Number of contrast steps: "]["var"].get()
+        contrastStepRatio = contrastDict["Calculated contrast step ratio: "]["var"].get()
+        contrastStepCount = contrastDict["Number of contrast steps: "]["var"].get()
+
+        maxFrequency = frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()
+        frequencyStepRatio = frequencyDict["Calculated frequency step ratio: "]["var"].get()
+        frequencyStepCount = frequencyDict["Number of frequency steps: "]["var"].get()
 
         #Generate images
         imageDir = mountDir + "images/"
         highInt = (0,255,0)
         lowInt = (0,0,0)
+        frequency = entryDict["Pattern frequency for images: "]["var"].get()
 
         for image in imageList:
             if("contrast" in image.lower()): # if image is contrast type, get root type and contrast settings
-                stepCount -= 1
-                contrast = maxContrast*(stepRatio**stepCount)
+                contrastStepCount -= 1
+                contrast = maxContrast*(contrastStepRatio**contrastStepCount)
                 lowInt, highInt = convertContrast(contrast)
 
-            imageFile = drawImage(image, entryDict["Pattern frequency for images: "]["var"].get(), lowInt, highInt)
+            elif("frequency" in image.lower()): # if image is frequency type, get root type and frequency settings
+                frequencyStepCount -= 1
+                frequency = round((maxFrequency*(frequencyStepRatio**frequencyStepCount)))
+
+            imageFile = drawImage(image, frequency, lowInt, highInt)
 
             try:
                 imageFile.save(imageDir + image, format="PNG")
@@ -713,6 +769,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, imageBarDict, metadataBox
         #Create checkerboard as default starting pattern
         squareWidth = imageWidth/(2*freq)
         squareHeight = squareWidth
+
         x0 = 0
         y0 = 0
         drawSquare = True
