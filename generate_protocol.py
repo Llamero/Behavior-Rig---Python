@@ -545,7 +545,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
                         rewardList = [imageName + ".png"] + rewardList
                 else:
                     rewardList.append(key + ".png")
-        rewardList.append("Solid reward - negative control.png") #Add negative control to reward list
+        rewardList.append("SolidReward-NegativeControl.png") #Add negative control to reward list
         imageList = rewardList + controlList #generate a list of all unique images used in the protocol
         preset = presetVar.get()
         for k,v in presetList:
