@@ -533,7 +533,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
                         imageName = key + "-contrast_" + str(round(contrast))
                         rewardList = [imageName + ".png"] + rewardList
 
-                if frameDict["frequency"].grid_info(): #If frequency series is selected, generate a list of frequency images.
+                elif frameDict["frequency"].grid_info(): #If frequency series is selected, generate a list of frequency images.
                     minFreq = frequencyDict["Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()
                     maxFreq = frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()
                     nSteps = frequencyDict["Number of frequency steps: "]["var"].get()
@@ -548,6 +548,9 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
         presetID = presetVar.get()
         if(presetID in (5,6)):
             rewardList.append("SolidReward-NegativeControl.png") #Add negative control to reward list
+            contrastDict["Number of contrast steps: "]["var"].set(contrastDict["Number of contrast steps: "]["var"].get() + 1) #Add one to the number of reward images - needed for behavior protocol check ############################################################################################################################
+            frequencyDict["Number of frequency steps: "]["var"].set(frequencyDict["Number of frequency steps: "]["var"].get() + 1)
+
         imageList = rewardList + controlList #generate a list of all unique images used in the protocol
         preset = presetVar.get()
         for k,v in presetList:
@@ -566,9 +569,9 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
             for key, value in contrastDict.items():
                 protocolString += key + str(value["var"].get()) + "\r\n"
 
-        if frameDict["frequency"].grid_info(): #If frequency frame is active, add frequency data to protocol string
-            for key, value in frequencyDict.items():
-                protocolString += key + str(value["var"].get()) + "\r\n"
+        if frameDict["frequency"].grid_info(): #If frequency frame is active, add frequency data with contrast keys to protocol string - workaround for contrast specific checks in the behavior protocol
+            for (f_key, f_value), (c_key, c_value) in zip(frequencyDict.items(), contrastDict.items()): #Iterate over two dictionaries at the same time: https://stackoverflow.com/questions/20736709/how-to-iterate-over-two-dictionaries-at-once-and-get-a-result-using-values-and-k
+                protocolString += c_key + str(f_value["var"].get()) + "\r\n"####################################################################################################################################################################################################################################################################
 
 
         protocolString += "Metadata: " + str(metadataBox.get("1.0", "end")) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget
