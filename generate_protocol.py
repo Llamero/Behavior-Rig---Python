@@ -546,6 +546,8 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
                 else:
                     rewardList.append(key + ".png")
         presetID = presetVar.get()
+
+        #Add negative control image to frequency and contrast sets
         if(presetID in (5,6)):
             rewardList.append("SolidReward-NegativeControl.png") #Add negative control to reward list
             contrastDict["Number of contrast steps: "]["var"].set(contrastDict["Number of contrast steps: "]["var"].get() + 1) #Add one to the number of reward images - needed for behavior protocol check ############################################################################################################################
@@ -573,6 +575,10 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
             for (f_key, f_value), (c_key, c_value) in zip(frequencyDict.items(), contrastDict.items()): #Iterate over two dictionaries at the same time: https://stackoverflow.com/questions/20736709/how-to-iterate-over-two-dictionaries-at-once-and-get-a-result-using-values-and-k
                 protocolString += c_key + str(f_value["var"].get()) + "\r\n"####################################################################################################################################################################################################################################################################
 
+        #Remove the +1 adjustment
+        if(presetID in (5,6)):
+            contrastDict["Number of contrast steps: "]["var"].set(contrastDict["Number of contrast steps: "]["var"].get() - 1) #Add one to the number of reward images - needed for behavior protocol check ############################################################################################################################
+            frequencyDict["Number of frequency steps: "]["var"].set(frequencyDict["Number of frequency steps: "]["var"].get() - 1)
 
         protocolString += "Metadata: " + str(metadataBox.get("1.0", "end")) #"1.0" means read starting line 1 character 0, END means read to end and add newline (end-1c would remove the added newline) https://stackoverflow.com/questions/14824163/how-to-get-the-input-from-the-tkinter-text-box-widget
 
@@ -841,6 +847,5 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
 
 if __name__ == '__main__':
     buildGUI()
-
 
 
