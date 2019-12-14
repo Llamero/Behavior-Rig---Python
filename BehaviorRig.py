@@ -50,6 +50,7 @@ contrastProtocol = None #Whether or not the current protocl is a contrast series
 pinWheel = 11 #TTL input from mouse wheel
 pinDoor = 13 #TTL input from mouse door to reward
 pinPump = 22 #TTL output to pump trigger
+pinStrip = 29 #TTL output to power strip
 
 doorOpen = False #Pin state when door is open
 wheelBounce = 1 #Bounce time between events in which to ignore subsequent events (ms)
@@ -866,6 +867,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
     global pinDoor
     global pinWheel
     global pinPump
+    global pinStrip
     global wheelBounce
     global doorBounce
     global doorOpen
@@ -909,6 +911,11 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
             stopString = "Wheel stop at: "
             runState = True #Initialize assuming control state
             rewardRev = random.randint(minRev, maxRev)
+            
+            #Have the wheel process also start the power strip to turn on monitors
+            GPIO.setup(pinStrip, GPIO.OUT)
+            GPIO.output(pinStrip, GPIO.HIGH) #Turn monitor on
+            
             connLog.send("Wheel starting at: " + "{:.3f}".format(time.time()-expStart))
 
         #Otherwise, log all other door events, and activate pump output
@@ -1016,6 +1023,8 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
         lxprint("GPIO Error!")
 
     finally:
+        if pin == pinWheel: #Have wheel process turn off monitor at end of run
+          GPIO.output(pinStrip, GPIO.LOW) #Turn monitor off
         GPIO.cleanup()
         lxprint(stopString + str(datetime.now()))
 
