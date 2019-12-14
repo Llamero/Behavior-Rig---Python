@@ -305,11 +305,11 @@ def buildGUI():
             entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(1)
             entryDict["Maximum time between wheel events (seconds): "]["var"].set(10)
             entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
-            entryDict["Pattern frequency for images: "]["var"].set(16)
+            entryDict["Pattern frequency for images: "]["var"].set(100)
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
 
             contrastDict["Number of contrast steps: "]["var"].set(8)
-            contrastDict["Minimum time between contrast increments: "]["var"].set(5)
+            contrastDict["Minimum time between contrast increments: "]["var"].set(contrastDict["Maximum duration of reward state (seconds): "]["var"].get() + 1) #Set so that only one image is shown per cycle
             contrastDict["Maximum time between contrast increments: "]["var"].set(contrastDict["Minimum time between contrast increments: "]["var"].get())
             contrastDict["Minimum contrast ratio (0-100): "]["var"].set(1)
             contrastDict["Maximum contrast ratio (0-100): "]["var"].set(100)
@@ -353,12 +353,12 @@ def buildGUI():
             if presetID == 5:
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["contrast"].grid()
-                entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
+                entryDict["Maximum wheel revolutions for reward: "]["var"].set(25)
 
             if presetID == 6:
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["frequency"].grid()
-                entryDict["Maximum wheel revolutions for reward: "]["var"].set(50)
+                entryDict["Maximum wheel revolutions for reward: "]["var"].set(25)
 
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
             else:
