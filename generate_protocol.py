@@ -309,7 +309,7 @@ def buildGUI():
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
 
             contrastDict["Number of contrast steps: "]["var"].set(8)
-            contrastDict["Minimum time between contrast increments: "]["var"].set(contrastDict["Maximum duration of reward state (seconds): "]["var"].get() + 1) #Set so that only one image is shown per cycle
+            contrastDict["Minimum time between contrast increments: "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get() + 1) #Set so that only one image is shown per cycle
             contrastDict["Maximum time between contrast increments: "]["var"].set(contrastDict["Minimum time between contrast increments: "]["var"].get())
             contrastDict["Minimum contrast ratio (0-100): "]["var"].set(1)
             contrastDict["Maximum contrast ratio (0-100): "]["var"].set(100)
