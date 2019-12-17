@@ -914,7 +914,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
             
             #Have the wheel process also start the power strip to turn on monitors
             GPIO.setup(pinStrip, GPIO.OUT)
-            GPIO.output(pinStrip, GPIO.LOW) #Turn monitor on
+            GPIO.output(pinStrip, GPIO.HIGH) #Turn monitor on
             
             connLog.send("Wheel starting at: " + "{:.3f}".format(time.time()-expStart))
             connLog.send("Monitor on at: " + "{:.3f}".format(time.time()-expStart))
@@ -1025,7 +1025,7 @@ def GPIOprocess(pin, connLog, stopQueue, imagePipe, expStart):
 
     finally:
         if pin == pinWheel: #Have wheel process turn off monitor at end of run
-          GPIO.output(pinStrip, GPIO.HIGH) #Turn monitor off
+          GPIO.output(pinStrip, GPIO.LOW) #Turn monitor off
           connLog.send("Monitor off at: " + "{:.3f}".format(time.time()-expStart))
         GPIO.cleanup()
         lxprint(stopString + str(datetime.now()))
