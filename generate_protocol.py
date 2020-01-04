@@ -18,7 +18,7 @@ if os.name != 'posix':
     import win32api #Get name of USB drive - windows only
 import glob #Search for files in deirectory
 
-nCages = 4 #Global variable declaring number of cages
+nCages = 6 #Global variable declaring number of cages
 imageWidth = 1366
 imageHeight = 768
 
