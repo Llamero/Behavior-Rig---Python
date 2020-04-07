@@ -709,8 +709,7 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
             elif("frequency" in image.lower()): # if image is frequency type, get root type and frequency settings
                 frequencyStepCount -= 1
                 frequency = round((maxFrequency*(frequencyStepRatio**frequencyStepCount)))
-                contrast = maxContrast
-                lowInt, highInt = convertContrast(contrast)
+                lowInt, highInt = convertContrast(maxContrast)
 
             imageFile = drawImage(image, frequency, lowInt, highInt)
 
