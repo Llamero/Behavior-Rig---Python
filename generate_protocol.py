@@ -356,6 +356,7 @@ def buildGUI():
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(25)
 
             if presetID == 6:
+                contrastDict["Maximum contrast ratio (0-100): "]["var"].set(32)
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["frequency"].grid()
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(25)
@@ -708,6 +709,8 @@ def uploadProtocol(frameDict, entryDict, contrastDict, frequencyDict, imageBarDi
             elif("frequency" in image.lower()): # if image is frequency type, get root type and frequency settings
                 frequencyStepCount -= 1
                 frequency = round((maxFrequency*(frequencyStepRatio**frequencyStepCount)))
+                contrast = maxContrast
+                lowInt, highInt = convertContrast(contrast)
 
             imageFile = drawImage(image, frequency, lowInt, highInt)
 
