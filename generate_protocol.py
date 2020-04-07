@@ -322,6 +322,8 @@ def buildGUI():
             frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].set(100)
             frequencyDict["Calculated frequency step ratio: "]["var"].set((frequencyDict["Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get()/frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].get())**(1/(frequencyDict["Number of frequency steps: "]["var"].get()-1)))
 
+            metadataBox.delete('1.0', END)
+            metadataBox.insert(END, "Type metadata here...")
 
             #On days 1 and 2, reward never times out
             if presetID <= 2:
@@ -354,12 +356,16 @@ def buildGUI():
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["contrast"].grid()
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(25)
+                metadataBox.delete('1.0', END)
+                metadataBox.insert(END, "Default frequency: " + str(entryDict["Pattern frequency for images: "]["var"].get()))
 
             if presetID == 6:
                 contrastDict["Maximum contrast ratio (0-100): "]["var"].set(32)
                 entryDict["Maximum time between wheel events (seconds): "]["var"].set(5)
                 frameDict["frequency"].grid()
                 entryDict["Maximum wheel revolutions for reward: "]["var"].set(25)
+                metadataBox.delete('1.0', END)
+                metadataBox.insert(END, "Default contrast: " + str(contrastDict["Maximum contrast ratio (0-100): "]["var"].get()))
 
             #Day 4 - Same as day 3, but control and reward intervals are randomized - default protocol
             else:
