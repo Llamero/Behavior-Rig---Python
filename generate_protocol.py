@@ -305,7 +305,7 @@ def buildGUI():
             entryDict["Duration of pump \"on\" state (seconds): "]["var"].set(1)
             entryDict["Maximum time between wheel events (seconds): "]["var"].set(10)
             entryDict["Duration of each reward frame (seconds): "]["var"].set(entryDict["Maximum duration of reward state (seconds): "]["var"].get())
-            entryDict["Pattern frequency for images: "]["var"].set(100)
+            entryDict["Pattern frequency for images: "]["var"].set(16)
             entryDict["Total duration of the experiment (hours): "]["var"].set(12)
 
             contrastDict["Number of contrast steps: "]["var"].set(8)
@@ -316,7 +316,7 @@ def buildGUI():
             contrastDict["Calculated contrast step ratio: "]["var"].set((contrastDict["Minimum contrast ratio (0-100): "]["var"].get()/contrastDict["Maximum contrast ratio (0-100): "]["var"].get())**(1/(contrastDict["Number of contrast steps: "]["var"].get()-1)))
 
             frequencyDict["Number of frequency steps: "]["var"].set(8)
-            frequencyDict["Minimum time between frequency increments: "]["var"].set(5)
+            frequencyDict["Minimum time between frequency increments: "]["var"].set(11)
             frequencyDict["Maximum time between frequency increments: "]["var"].set(frequencyDict["Minimum time between frequency increments: "]["var"].get())
             frequencyDict["Minimum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].set(2)
             frequencyDict["Maximum pattern frequency (2-" + str(round(imageWidth/2)) + "): "]["var"].set(100)
